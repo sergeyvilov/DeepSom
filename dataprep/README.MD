@@ -67,17 +67,17 @@ python generate_tensors.py \
 --tensor_max_height 70
 ```
 
-* A variant tensor is made of reads collected for a given record in a VCF file. So, for each VCF record, the script `generate_tensors.py` should know which BAM file to use. The name of the BAM file can be either directly encoded in the INFO field of the VCF record or provided in a .csv table which is passed with `--bam_matching_csv` parameter to the script `generate_tensors.py`. Each row of this table should have comma-separated BAM sample name and the corresponding BAM file name (without the path).
+* A variant tensor is made of reads collected for a given record in a VCF file. So, for each VCF record, the script `generate_tensors.py` should know which BAM file to use. The name of the BAM file can be either directly encoded in the INFO field of the VCF record (under a `BAM=file_name_without_path.bam` record) or provided in a .csv table which is passed with `--bam_matching_csv` parameter to the script `generate_tensors.py`. Each row of this table should have comma-separated BAM sample name and the corresponding BAM file name (without the path).
 
 * VCFs used for tensors generation must only include bialleic SNP mutations.
 
-* The parameters `--tensor_width` and `--tensor_max_height` define the width and the maximal height of the variant tensor correspondingly. High values of these parameters may lead to a better performance but a larger  training time. The parameter `--tensor_max_height` is usually chosen s.t. the probability of having a variant with a larger read depth is small (e.g. the 75th percentile of the read depth distribution). The maximal reasonable value for `--tensor_width` is twice the most probable read length, but we note that tuning `--tensor_width` does not change the NNC performance much: the observed ROC AUC score for the TCGA-LAML dataset was only by about 0.5\% lower with `--tensor_width=75` compared to `--tensor_width=150` (twice the most probable read length). The minimal value of `--tensor_width` is 24 (limited by the NN architecture).
+* The parameters `--tensor_width` and `--tensor_max_height` define the width and the maximal height of the variant tensor correspondingly. High values of these parameters may lead to a better performance but a larger  training time. The parameter `--tensor_max_height` is usually chosen s.t. the probability of having a variant with a larger read depth is small (e.g. the 75th percentile of the read depth distribution). The maximal reasonable value for `--tensor_width` is twice the most probable read length, but we note that tuning `--tensor_width` does not change the NNC performance much: the observed ROC AUC score for the TCGA-LAML dataset was only by about 0.5\% lower with `--tensor_width=75` compared to `--tensor_width=150` (twice the most probable read length). The minimal value of `--tensor_width` is 24 (limited by the NNC architecture).
 
 * To speed up training, we group variant tensors in .imgb batches of 4. When creating a train set, this is the recommended value for `--Lbatch`  as other values may affect the recommended NNC hyperparameters. When generating tensors for evaluation/inference, any positive integer value of `--Lbatch` can be used. Larger values lead to faster inference.
 
 * Inference .imgb batches should be generated in a way that tracing of original variants is possible. So,
-each row in the VCF file should correspond to only one sample. When more samples share a given variant,
-separate VCF rows should be created for each of the samples (so, each row will have its own BAM= record). Alternatively,
+each row in the VCF file should correspond to only one sample. When more samples share a variant,
+separate VCF rows should be created for each of the samples (each row having its own BAM= record). Alternatively,
 a separate VCF file can be created for each sample.
 
 * The script `generate_tensors.py` creates .imgb batches in the output folder, each batch comprising `--Lbatch` variant tensors. Each batch is named using the index of the VCF record corresponding to the first variant in the batch. Batches are distributed over subfolders which are automatically created in the output folder, at most 100 batches per subfolder.
@@ -89,8 +89,8 @@ a separate VCF file can be created for each sample.
 * After generating the tensors, the information about SNPs and corresponding .imgb batches can be found in a `variants.csv.gz`
 file in the `output_dir`.
 
-* Each *.imgb batch is a python pickle object with a dictionary of two items: "images" and "info". "images" is a list of variant tensors of length `Lbatch`. "info" is a list of tensor descriptions of length `Lbatch`. Each item of "info" includes information
-about the BAM file, ref and alt alleles, position, chromosome, etc. of the corresponding item in "images".
+* Each *.imgb batch is a python pickle object with a dictionary of two items: "images" and "info". "images" is a list of variant tensors of length `Lbatch`. "info" is a list of tensor descriptions of length `Lbatch`. Each item in "info" corresponds to one tensor in "images" and includes information
+about the BAM file, ref and alt alleles, position, chromosome, etc. of the variant.
 
 After generating .imgb batches, descend to the `output_dir` and run the following command to get a list of all tensor batches:
 

@@ -300,9 +300,9 @@ weights_dir = os.path.join(input_params.output_dir, 'weights') #dir to save mode
 os.makedirs(predictions_dir, exist_ok = True)
 os.makedirs(weights_dir, exist_ok = True)
 
-print(f'Starting from epoch: {last_epoch+1}\n')
+tot_epochs = max(last_epoch+2, input_params.tot_epochs)
 
-for epoch in range(last_epoch+1, input_params.tot_epochs):
+for epoch in range(last_epoch+1, tot_epochs):
 
     if train_enabled:
 
