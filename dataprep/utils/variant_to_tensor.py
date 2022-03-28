@@ -137,8 +137,7 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
 
     #collect all the reads around the candidate variant position
     for read in samfile.fetch(variant['chrom'], variant['pos']-2, variant['pos']+2):
-        if (read.pos<=variant['pos']-1 and read.reference_end>variant['pos'] and
-            read.flag&EXCLUDE_FLAGS==0):
+        if (read.flag&EXCLUDE_FLAGS==0 and read.pos<=variant['pos']-1 and read.reference_end>variant['pos']):
                 raw_reads.append((read.pos,read.seq,read.qual,read.flag,read.cigartuples))
         if len(raw_reads)>=MAX_RAW_READS:#sometimes there are a lot of reads, we don't need all of them
             break
