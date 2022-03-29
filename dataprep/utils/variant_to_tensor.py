@@ -255,14 +255,14 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
     for basis_idx in range(4):
         p_hot_reads[:,:,basis_idx] = np.where(reads_im[:,:,0]==basis_idx, reads_im[:,:,1], (1.-reads_im[:,:,1])/3.)
 
-    del_row, del_col = np.where(reads_im[:,0,:]==6) #deletions
+    del_row, del_col = np.where(reads_im[:,:,0]==encode_bases('*')) #deletions
     p_hot_reads[del_row, del_col, :] = 0.
 
-    M_row, M_col = np.where(reads_im[:,0,:]==7) #M: either A or C, each with probability 0.5
+    M_row, M_col = np.where(reads_im[:,:,0]==encode_bases('M')) #M: either A or C, each with probability 0.5
     p_hot_reads[M_row, M_col, 0] = 1.
     p_hot_reads[M_row, M_col, 1] = 1.
 
-    K_row, K_col = np.where(reads_im[:,0,:]==5) #K: either G or T, each with probability 0.5
+    K_row, K_col = np.where(reads_im[:,:,0]==encode_bases('K')) #K: either G or T, each with probability 0.5
     p_hot_reads[K_row, K_col, 2] = 1.
     p_hot_reads[K_row, K_col, 3] = 1.
 
