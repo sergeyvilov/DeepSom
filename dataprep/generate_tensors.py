@@ -42,7 +42,7 @@ parser.add_argument("--tensor_width",                   help = "tensor width", t
 parser.add_argument("--tensor_max_height",              help = "max tensor height", type = int, default = 70, required = False)
 parser.add_argument("--tensor_crop_strategy",           help = "how to crop tensor when Nreads>tensor_max_height", type = str, default = 'topbottom', required = False)
 parser.add_argument("--tensor_sort_by_variant",         help = "sort reads by base in the variant column", type = lambda x: bool(str2bool(x)), default = True, required = False)
-parser.add_argument("--tensor_check_variant_column",    help = "check if the variant is present in actual pileup", type = lambda x: bool(str2bool(x)), default = False, required = False)
+parser.add_argument("--tensor_check_variant",           help = "perform basic checks for snps/indels", default = 'vaf_only', required = False) #'snps', 'indels', 'vaf_only' or 'None'
 
 input_params = vars(parser.parse_args())
 

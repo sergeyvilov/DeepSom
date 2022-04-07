@@ -1,4 +1,4 @@
-# Neural Network Classifier for calling somatic SNPs without a matched normal.
+# Neural Network Classifier for calling somatic SNP and INDEL variants without a matched normal.
 
 The Neural Network Classifier (NNC) can be used in three modes:
 

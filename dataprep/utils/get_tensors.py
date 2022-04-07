@@ -88,6 +88,21 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         if max_variants and N_variants_added >= max_variants:
             break
 
+        variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alts[0]}
+
+        # if 'POS_Build36' in rec.info.keys():
+        #     variant['pos'] = rec.info['POS_Build36']
+        #
+        # variant_annotations = {}
+        #
+        # for ann_name in ['GERMLINE']:
+        #     if ann_name in rec.info.keys():
+        #         variant_annotations[ann_name] = rec.info.get(ann_name)
+        #     else:
+        #         variant_annotations[ann_name] = None
+        #
+        # variant.update(variant_annotations)
+
         #in a VCF file we have BAM sample names and we need the names of corresponding BAM files
         if bam_matching_csv:
             #get the file name from the matching table
@@ -104,12 +119,10 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
                 bam_path = os.path.join(bam_dir, bam_file_name) #full path to the BAM file
 
-                variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alts[0]}
-
                 try:
 
                     #get a tensor variant tensor for the current variant
-                    variant_tensor, ref_support, VAF, DP = variant_to_tensor(variant, refgen_fa, bam_path, check_variant="snps",
+                    variant_tensor, ref_support, VAF, DP = variant_to_tensor(variant, refgen_fa, bam_path,
                          **tensor_opts) #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
 
                 except Exception as exc:

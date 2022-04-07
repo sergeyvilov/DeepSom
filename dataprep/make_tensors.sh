@@ -28,7 +28,7 @@ tensor_width=150 # tensor width
 tensor_max_height=75 #max tensor height
 tensor_crop_strategy='topbottom' #how to crop variant tensor when read depth>tensor_height
 tensor_sort_by_variant=1 #sort reads by base in the variant column
-tensor_check_variant_column=1 #check if the variant is present in actual pileup
+tensor_check_variant='snps' #check if the variant is a valid SNP and the alternative allele is present in actual pileup
 ####
 
 negative_vcf='./projects/project_name/calling/negative/results/negative.vcf.gz' #VCF file with germline variants and artefacts, output of Mutect2
@@ -113,7 +113,7 @@ python_common_params="python generate_tensors.py \
 --tensor_max_height $tensor_max_height \
 --tensor_crop_strategy $tensor_crop_strategy \
 --tensor_sort_by_variant $tensor_sort_by_variant \
---tensor_check_variant_column $tensor_check_variant_column" #parameters of images generation
+--tensor_check_variant $tensor_check_variant_column" #parameters of images generation
 
 images_dir=$output_dir/tensors
 
