@@ -82,9 +82,7 @@ python nn.py \
 --tensor_height 70
 ```
 
-NNC output scores for variants in `--inference_ds` will be written to an `inference.csv` file in `--output_dir`.
-Each line of `inference.csv` corresponds to a single variant. Use `variants.csv.gz` from the dataset tensors dir to identify
-variants in `--inference_ds`.
+NNC output scores for variants in `--inference_ds` will be written to an `inference.vcf` file in `--output_dir`.
 
 # Using NNC output to compute probabilities and classify variants
 

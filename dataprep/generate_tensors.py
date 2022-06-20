@@ -72,7 +72,7 @@ t0 = time.time()
 
 variants_df = get_tensors(tensor_opts = tensor_opts, simulate=SIMULATE, **gen_params) #dataframe with annotations of processed variants
 
-vcf_name = os.path.basename(input_params.vcf).replace('.vcf.gz', '') #VCF base name without extentension
+vcf_name = os.path.basename(input_params.vcf) #vcf base name
 
 variants_df['vcf'] = vcf_name
 

@@ -131,6 +131,7 @@ class TensorDataset(Dataset):
         self.data = data
         self.target_height = target_height
         self.target_width = target_width
+        self.variant_meta = [[] for idx in range(len(self.data))]
 
     def __len__(self):
 
@@ -165,6 +166,9 @@ class TensorDataset(Dataset):
             tensors = pickle.load(f)
 
         N_tensors = len(tensors['images']) #number of tensors in the current imgb batch
+
+        if len(self.variant_meta[idx]) == 0:
+            self.variant_meta[idx] = tensors['info'] #extract meta information about the variants in the batch: chrom, pos, ref, alt, vcf name
 
         full_tensors = [] #tensors of right dimensions (self.target_height, self.target_width)
 
@@ -225,7 +229,7 @@ def collate_fn(data):
     output = []
 
     for item in zip(*data):
-        item_flattened = [sample for batch in item for sample in batch]
+        item_flattened = np.array([sample for batch in item for sample in batch])
         output.append(item_flattened)
 
     return output
@@ -331,7 +335,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
         if input_params.inference_mode:
 
-            print(f'Inference completed. Predictions saved in {os.path.join(predictions_dir, "inference.csv")}')
+            print(f'Inference completed. Predictions saved in {os.path.join(predictions_dir, "inference.vcf")}')
 
             break
 

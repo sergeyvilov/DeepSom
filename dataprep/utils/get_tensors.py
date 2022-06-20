@@ -145,7 +145,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                      'chrom_record_idx':chrom_record_idx,
                      'subdir': batch_subdir,
                      'BAM': bam_file_name,
-                     'VAF': VAF,
+                     'VAF': round(VAF,2),
                      'DP': DP,
                      'tensor_height':tensor_height,
                     }
