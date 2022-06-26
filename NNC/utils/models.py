@@ -91,7 +91,6 @@ class ConvNN(nn.Module):
         out = self.fc8(out)
         out = self.act8(out)
 
-        out = torch.squeeze(out)
-
+        out = torch.squeeze(out,1)
 
         return out

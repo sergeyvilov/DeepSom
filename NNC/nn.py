@@ -35,13 +35,13 @@ class dotdict(dict):
 
 parser = argparse.ArgumentParser("generate_tensors.py")
 
-parser.add_argument("--negative_ds",                                  help = "full path to negative(artefacts+germline SNPs) imgb batches", type = str, default = '', required = False)
-parser.add_argument("--positive_ds",                                  help = "full path to positive (somatic SNPs) imgb batches", type = str, default = '', required = False)
+parser.add_argument("--dataset",                                      help = "full path to imgb batches", type = str, default = '', required = True)
+parser.add_argument("--final_dataset",                                help = "Dataset to validate on after the last epoch", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--inference_mode",                               help = "perform inference on inference_ds", type = lambda x: bool(str2bool(x)), default = False, required = False)
-parser.add_argument("--inference_ds",                                 help = "full path to inference imgb batches", type = str, default = '', required = False)
+parser.add_argument("--inference_mode",                               help = "perform inference on the input dataset", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--load_weights",                                 help = "load NN and optimizer weights from a previous run", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
+parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
 parser.add_argument("--tensor_height",                                help = "tensor height", type = int, required = True)
 parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation/evaluation", type = float, default = 0, required = False)
@@ -51,7 +51,6 @@ parser.add_argument("--weight_decay",                                 help = "we
 parser.add_argument("--tot_epochs",                                   help = "total number of training epochs", type = int, default = 20, required = False)
 parser.add_argument("--lr_sch_milestones",                            help = "epoch at which the learning rate should be reduced", type = int, default = 15, required = False)
 parser.add_argument("--lr_sch_gamma",                                 help = "learning rate reduction factor", type = float, default = 0.1, required = False)
-parser.add_argument("--resample_train",                               help = "'upsample' to upsample the underrepresented class,'downsample' to downsample overrepresented class. Doesn't apply to validation/evaluation or inference", type = str, choices = ['upsample', 'downsample', 'None'], default = None, required = False)
 parser.add_argument("--save_each",                                    help = "when to save model/optimizer parameters, save_each=0 if saving is not needed, save_each=num_epochs for results to be saved only at the end", type = int, default = 0, required = False)
 
 input_params = vars(parser.parse_args())
@@ -61,54 +60,48 @@ input_params = dotdict(input_params)
 assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
-for param_name in ['negative_ds', 'positive_ds', '\\',
-'inference_mode', 'inference_ds', '\\',
+for param_name in ['dataset', 'final_dataset', '\\',
+'inference_mode', '\\',
 'load_weights', 'config_start_base', '\\',
+'seed', '\\',
 'val_fraction', '\\',
 'output_dir', '\\',
 'tensor_width','tensor_height', '\\',
 'batch_size', 'learning_rate','weight_decay',  '\\',
 'tot_epochs', 'lr_sch_milestones', 'lr_sch_gamma', '\\',
-'resample_train',  '\\',
 'save_each',  '\\']:
     if param_name == '\\':
         print()
     else:
         print(f'{param_name.upper()}: {input_params[param_name]}')
 
+
+random.seed(input_params.seed)
+np.random.seed(input_params.seed)
+torch.manual_seed(input_params.seed)
+
 if not input_params.inference_mode:
 
-    neg_df = pd.read_csv(input_params.negative_ds, names=['path'])
-    neg_df['label'] = 0
+    train_eval_df = pd.read_csv(input_params.dataset, names=['path'])
 
-    pos_df = pd.read_csv(input_params.positive_ds, names=['path'])
-    pos_df['label'] = 1
-
-    train_eval_df = pd.concat((neg_df, pos_df)) #concatenate positive and negative dataframes
-    train_eval_df = train_eval_df.sample(frac=1, random_state=1) #shuffle
-
-    N_eval_pos = int(input_params.val_fraction*len(pos_df)) #number of positive instances for evaluation
-    N_eval_neg = int(input_params.val_fraction*len(neg_df)) #number of negative instances for evaluation
-
-    eval_df = pd.concat((neg_df.sample(n=N_eval_neg, random_state=1), pos_df.sample(n=N_eval_pos, random_state=1))) #uniformly sample instanses for evaluation dataframe
-    eval_df = eval_df.sample(frac=1, random_state=1) #shuffle
+    eval_df = train_eval_df.sample(frac=input_params.val_fraction, random_state=1)
 
     train_df = pd.concat((train_eval_df, eval_df)).drop_duplicates(keep=False) #remove eval instances from train dataframe
 
-    print(f'Train instances before resampling: {(train_df.label==1).sum()} positive; {(train_df.label==0).sum()} negative')
+    print(f'Train instances {len(train_df)}')
 
-    train_df = misc.resample(train_df, resample_mode=input_params.resample_train)
-
-    print(f'Train instances after resampling: {(train_df.label==1).sum()} positive; {(train_df.label==0).sum()} negative')
-
-    print(f'Eval instances: {(eval_df.label==1).sum()} positive; {(eval_df.label==0).sum()} negative')
+    print(f'Eval instances: {len(eval_df)}')
 
     train_enabled, eval_enabled = len(train_df)>0, len(eval_df)>0
 
+    if input_params.final_dataset:
+        print(f'Final dataset instances: {len(eval_df)}')
+        eval_df = pd.read_csv(input_params.final_dataset, names=['path'])
+
+
 else:
 
-    eval_df = pd.read_csv(input_params.inference_ds, names=['path'])
-    eval_df['label'] = None
+    eval_df = pd.read_csv(input_params.dataset, names=['path'])
 
     print(f'Performing inference on {len(eval_df)} instances')
 
@@ -156,7 +149,9 @@ class TensorDataset(Dataset):
 
         '''
 
-        imgb_path, label = self.data[idx] #retrieve imgb batch
+        imgb_path = self.data[idx][0] #retrieve imgb batch
+
+        #imgb_path='/storage/groups/epigenereg01/workspace/projects/vale/datasets/snvs/BLCA-US/gnomAD_thr_0/images2/73000/0/73000_968.imgb'
 
         p_hot_correction_factor = 1e-4 #for p-hot reads encoded as ushort in variant_to_tensor function
 
@@ -215,10 +210,9 @@ class TensorDataset(Dataset):
 
             full_tensors.append(full_tensor)
 
-        labels = [label]*len(full_tensors)
+        labels = [info["true_label"] for info in tensors['info']]
 
         tensors_dataset_idx = [(idx,x) for x in range(N_tensors)] # position of each tensor in the dataset (idx_of_imgb_batch, pos_in_imgb_batch), to keep track of each individual tensor
-
         return full_tensors, labels, tensors_dataset_idx
 
 def collate_fn(data):
@@ -242,7 +236,7 @@ if train_enabled:
 
     train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-if eval_enabled:
+if eval_enabled or input_params.final_dataset:
 
     eval_dataset = TensorDataset(eval_df.values.tolist(), target_height=input_params.tensor_height, target_width=input_params.tensor_width)
 
@@ -325,7 +319,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
-    if eval_enabled:
+    if eval_enabled or (epoch==tot_epochs-1 and input_params.final_dataset):
 
         print(f'Evaluating for epoch: {epoch}')
 

@@ -75,7 +75,7 @@ def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=Fal
     Save predictions in a vcf file
     '''
 
-    imgb_names,_=zip(*dataset.data)
+    #imgb_names,_=zip(*dataset.data)
 
     #predictions = [(imgb_names[tensor_pos[0]], tensor_pos[1], score, label) for tensor_pos, score, label in predictions] #(imgb_name, pos_in_imgb, nn_score, true_label)
 
@@ -86,7 +86,7 @@ def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=Fal
         variant_meta = dataset.variant_meta[tensor_pos[0]][tensor_pos[1]] #locate variant meta information
         variant_row = [variant_meta['chrom'], variant_meta['pos'], '.', variant_meta['ref'], variant_meta['alt'], '.', '.']  #this will be a row in the output vcf file
         variant_info = '' #all supplementary information goes to the INFO field
-        for key in ['vcf', 'BAM', 'DP', 'VAF', 'batch_name', 'imgb_index']:
+        for key in ['vcf', 'BAM', 'DP', 'VAF', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
         variant_info += f'nnc_score={score:.4}'
