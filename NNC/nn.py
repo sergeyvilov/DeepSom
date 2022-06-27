@@ -4,8 +4,6 @@
 # Neural Network training and evaluation
 
 import pandas as pd
-import builtins
-import time
 import argparse
 import os
 import sys
@@ -16,30 +14,24 @@ import pickle
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from sklearn.model_selection import train_test_split
+
 sys.path.append('utils')
 
 import models               #model architecture
 import train_eval           #NN train and evaluation
 import misc                 #miscellaneous functions
 
+from misc import print      #print function that displays time
+
 def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
 
-class dotdict(dict):
-    '''
-    Dictionary with dot.notation access to attributes
-    '''
-
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
 parser = argparse.ArgumentParser("generate_tensors.py")
 
-parser.add_argument("--dataset",                                      help = "full path to imgb batches", type = str, default = '', required = True)
-parser.add_argument("--final_dataset",                                help = "Dataset to validate on after the last epoch", type = str, default = None, required = False)
+parser.add_argument("--train_dataset",                                help = "Train dataset", type = str, default = None, required = False)
+parser.add_argument("--test_dataset",                                 help = "Dataset to evaluate on after the last epoch or perform inference", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--inference_mode",                               help = "perform inference on the input dataset", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--load_weights",                                 help = "load NN and optimizer weights from a previous run", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
@@ -56,13 +48,12 @@ parser.add_argument("--save_each",                                    help = "wh
 
 input_params = vars(parser.parse_args())
 
-input_params = dotdict(input_params)
+input_params = misc.dotdict(input_params)
 
 assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
-for param_name in ['dataset', 'final_dataset', '\\',
-'inference_mode', '\\',
+for param_name in ['train_dataset', 'test_dataset', '\\',
 'load_weights', 'config_start_base', '\\',
 'seed', '\\',
 'val_fraction', '\\',
@@ -76,41 +67,37 @@ for param_name in ['dataset', 'final_dataset', '\\',
     else:
         print(f'{param_name.upper()}: {input_params[param_name]}')
 
-
+#fix seed for initialization of neural network weights
 random.seed(input_params.seed)
 np.random.seed(input_params.seed)
 torch.manual_seed(input_params.seed)
 
-if not input_params.inference_mode:
+train_on, valid_on, test_on = 0, 0, 0 #will be set to 1 if the corresponding operation is expected
 
-    train_eval_df = pd.read_csv(input_params.dataset, names=['path'])
+if input_params.train_dataset:
 
-    train_eval_df = train_eval_df.sample(frac=1, random_state=1)
+    train_valid_images = pd.read_csv(input_params.train_dataset, names=['path'], squeeze=True).tolist()
 
-    eval_df = train_eval_df.sample(frac=input_params.val_fraction, random_state=1)
+    if input_params.val_fraction>0:
+        train_images, valid_images = train_test_split(train_valid_images, test_size=input_params.val_fraction, shuffle=True, random_state=1)
+    else:
+        train_images, valid_images = train_valid_images, []
 
-    train_df = pd.concat((train_eval_df, eval_df)).drop_duplicates(keep=False) #remove eval instances from train dataframe
+    print(f'Train instances {len(train_images)}')
 
-    print(f'Train instances {len(train_df)}')
+    print(f'Validation instances: {len(valid_images)}')
 
-    print(f'Eval instances: {len(eval_df)}')
+    train_on, valid_on = len(train_images)>0, len(valid_images)>0
 
-    train_enabled, eval_enabled = len(train_df)>0, len(eval_df)>0
+if input_params.test_dataset:
 
-    if input_params.final_dataset:
-        print(f'Final dataset instances: {len(eval_df)}')
-        eval_df = pd.read_csv(input_params.final_dataset, names=['path'])
+    test_images = pd.read_csv(input_params.test_dataset, names=['path'], squeeze=True).tolist()
 
+    print(f'Test/Inference instances: {len(test_images)}')
 
-else:
+    test_on = len(test_images)>0
 
-    eval_df = pd.read_csv(input_params.dataset, names=['path'])
-
-    print(f'Performing inference on {len(eval_df)} instances')
-
-    train_enabled, eval_enabled = False, True
-
-assert train_enabled+eval_enabled>0, 'Insufficient number of instances for operation' #not enough tensors for training/evaluation
+assert train_on+valid_on+test_on>0, 'Insufficient number of instances for operation' #not enough tensors for training/evaluation
 
 class TensorDataset(Dataset):
 
@@ -152,7 +139,7 @@ class TensorDataset(Dataset):
 
         '''
 
-        imgb_path = self.data[idx][0] #retrieve imgb batch
+        imgb_path = self.data[idx] #retrieve imgb batch
 
         #imgb_path='/storage/groups/epigenereg01/workspace/projects/vale/datasets/snvs/BLCA-US/gnomAD_thr_0/images2/73000/0/73000_968.imgb'
 
@@ -233,17 +220,23 @@ def collate_fn(data):
 
 #define train and evaluation datasets/dataloaders
 
-if train_enabled:
+if train_on:
 
-    train_dataset = TensorDataset(train_df.values.tolist(), target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+    train_dataset = TensorDataset(train_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
 
     train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-if eval_enabled or input_params.final_dataset:
+if valid_on:
 
-    eval_dataset = TensorDataset(eval_df.values.tolist(), target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+    valid_dataset = TensorDataset(valid_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
 
-    eval_dataloader = DataLoader(eval_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+
+if test_on:
+
+    test_dataset = TensorDataset(test_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+
+    test_dataloader = DataLoader(test_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 #access the GPU
 if torch.cuda.is_available():
@@ -274,39 +267,37 @@ if input_params.load_weights:
     if torch.cuda.is_available():
         #load on gpu
         model.load_state_dict(torch.load(input_params.config_start_base + '_model'))
-        if not input_params.inference_mode:
+        if train_on:
             optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer'))
     else:
         #load on cpu
         model.load_state_dict(torch.load(input_params.config_start_base + '_model', map_location=torch.device('cpu')))
-        if not input_params.inference_mode:
+        if train_on:
             optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer', map_location=torch.device('cpu')))
 
     last_epoch = int(input_params.config_start_base.split('_')[-2]) #infer previous epoch from input_params.config_start_base
 
-if not input_params.inference_mode:
+if train_on:
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                             milestones=[input_params.lr_sch_milestones],
                                                             gamma=input_params.lr_sch_gamma,
                                                             last_epoch=last_epoch, verbose=False) #define learning rate scheduler
 
-#redefine print function for logging
-def print(*args, **kwargs):
-    now = time.strftime("[%Y/%m/%d-%H:%M:%S]-", time.localtime()) #place current time at the beggining of each printed line
-    builtins.print(now, *args, **kwargs)
-    sys.stdout.flush()
 
 predictions_dir = os.path.join(input_params.output_dir, 'predictions') #dir to save predictions
 weights_dir = os.path.join(input_params.output_dir, 'weights') #dir to save model weights every save_each epoch
 
-os.makedirs(predictions_dir, exist_ok = True)
-os.makedirs(weights_dir, exist_ok = True)
+if valid_on or test_on:
+    os.makedirs(predictions_dir, exist_ok = True)
+
+if input_params.save_each:
+    os.makedirs(weights_dir, exist_ok = True)
 
 tot_epochs = max(last_epoch+2, input_params.tot_epochs)
 
 for epoch in range(last_epoch+1, tot_epochs):
 
-    if train_enabled:
+    if train_on:
 
         print(f'Training for epoch: {epoch}')
 
@@ -322,26 +313,33 @@ for epoch in range(last_epoch+1, tot_epochs):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
-    if eval_enabled or (epoch==tot_epochs-1 and input_params.final_dataset):
+    if valid_on:
 
-        print(f'Evaluating for epoch: {epoch}')
+        print(f'Validating for epoch: {epoch}')
 
-        eval_loss, eval_pred = train_eval.model_eval(model, optimizer, eval_dataloader, device, input_params.inference_mode)
+        valid_loss, valid_pred = train_eval.model_eval(model, optimizer, valid_dataloader, device)
 
-        misc.save_predictions(eval_pred, eval_dataset, predictions_dir, epoch, input_params.inference_mode) #save evaluation predictions on disk
+        valid_ROC_AUC = misc.get_ROC(valid_pred)
 
-        if input_params.inference_mode:
+        print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
-            print(f'Inference completed. Predictions saved in {os.path.join(predictions_dir, "inference.vcf")}')
+        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, epoch) #save evaluation predictions on disk
 
-            break
+    if test_on and epoch==tot_epochs-1:
 
-        eval_ROC_AUC = misc.get_ROC(eval_pred)
+        test_loss, test_pred = train_eval.model_eval(model, optimizer, test_dataloader, device)
 
-        print(f'EPOCH: {epoch} - eval loss:{eval_loss:.4}, eval ROC AUC: {eval_ROC_AUC:.4}')
+        _, _, labels = zip(*test_pred)
 
-        if not train_enabled:
+        print(labels)
 
-            break
+        if all(labels):
+
+            test_ROC_AUC = misc.get_ROC(test_pred)
+
+            print(f'EPOCH: {epoch} - test loss:{test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
+
+        misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'predictions.vcf') #save evaluation predictions on disk
+
 
 print('Done')

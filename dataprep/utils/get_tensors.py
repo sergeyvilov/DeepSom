@@ -65,7 +65,8 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     #vcf_in = pysam.VariantFile(vcf) #open the VCF file
 
-    vcf_basename = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', os.path.basename(vcf))
+    vcf_basename = os.path.basename(vcf) #name w/o path
+    vcf_short_name = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', vcf_basename) #remove extension
 
     #all_samples = list(vcf_in.header.samples) #extract BAM sample names from the VCF header
 
@@ -166,7 +167,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
             #save the batch to the disk when it is full
 
-            batch_name = f'{vcf_basename}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+            batch_name = f'{vcf_short_name}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
 
             for i in range(-Lbatch,0):
                 variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
@@ -188,7 +189,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     if N_batch:
 
-        batch_name = f'{vcf_basename}_{variants_list[-N_batch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+        batch_name = f'{vcf_short_name}_{variants_list[-N_batch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
 
         for i in range(-N_batch,0):
             variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
