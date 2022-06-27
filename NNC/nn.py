@@ -36,7 +36,6 @@ class dotdict(dict):
 parser = argparse.ArgumentParser("generate_tensors.py")
 
 parser.add_argument("--dataset",                                      help = "full path to imgb batches", type = str, default = '', required = True)
-parser.add_argument("--final_dataset",                                help = "Dataset to validate on after the last epoch", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
 parser.add_argument("--inference_mode",                               help = "perform inference on the input dataset", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--load_weights",                                 help = "load NN and optimizer weights from a previous run", type = lambda x: bool(str2bool(x)), default = False, required = False)
@@ -60,7 +59,7 @@ input_params = dotdict(input_params)
 assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
-for param_name in ['dataset', 'final_dataset', '\\',
+for param_name in ['dataset', '\\',
 'inference_mode', '\\',
 'load_weights', 'config_start_base', '\\',
 'seed', '\\',
@@ -93,11 +92,6 @@ if not input_params.inference_mode:
     print(f'Eval instances: {len(eval_df)}')
 
     train_enabled, eval_enabled = len(train_df)>0, len(eval_df)>0
-
-    if input_params.final_dataset:
-        print(f'Final dataset instances: {len(eval_df)}')
-        eval_df = pd.read_csv(input_params.final_dataset, names=['path'])
-
 
 else:
 
@@ -236,7 +230,7 @@ if train_enabled:
 
     train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
-if eval_enabled or input_params.final_dataset:
+if eval_enabled:
 
     eval_dataset = TensorDataset(eval_df.values.tolist(), target_height=input_params.tensor_height, target_width=input_params.tensor_width)
 
@@ -319,7 +313,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
-    if eval_enabled or (epoch==tot_epochs-1 and input_params.final_dataset):
+    if eval_enabled:
 
         print(f'Evaluating for epoch: {epoch}')
 

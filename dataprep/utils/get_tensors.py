@@ -105,8 +105,8 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alt,
             'true_label':rec.true_label, 'GERMLINE':rec.GERMLINE, 'Sample': rec.Sample}
 
-        if 'POS_Build36' in rec.info:
-             variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec.info).groups(1)[0])
+        #if 'POS_Build36' in rec.info:
+        #     variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec.info).groups(1)[0])
 
         #
         # variant_annotations = {}
