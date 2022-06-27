@@ -5,7 +5,7 @@ import re
 
 import pandas as pd
 
-import pysam #library for reading VCF files
+#import pysam #library for reading VCF files
 
 from variant_to_tensor import variant_to_tensor #function to form a tensor out of a variant
 
@@ -86,6 +86,8 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: True if 'GERMLINE' in x else False)
 
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: False if 'NON-SOMATIC' in x else True if 'SOMATIC' in x else None)
+
+    vcf_in['chrom'] = vcf_in['chrom'].astype(str)
 
     #vcf_in['vartype'] = vcf_in[['ref','alt']].apply(lambda x: 'SNP' if  len(x.ref)==len(x.alt) else 'INDEL', axis=1)
 
@@ -186,7 +188,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     if N_batch:
 
-        batch_name = f'{vcf_basename}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+        batch_name = f'{vcf_basename}_{variants_list[-N_batch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
 
         for i in range(-N_batch,0):
             variants_list[i]['batch_name']=batch_name #mark batch name in the variants list

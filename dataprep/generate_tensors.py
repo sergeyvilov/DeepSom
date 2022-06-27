@@ -36,7 +36,7 @@ parser.add_argument("--chrom_stop",                     help = "stop position in
 parser.add_argument("--bam_dir",                        help = "folder with bam files", type = str, required = True)
 parser.add_argument("--bam_matching_csv",               help = "matching between BAM sample name and BAM file name, not needed if a BAM record is present in VCF annotations", type = str, default = '', required = False)
 parser.add_argument("--refgen_fa",                      help = "reference genome FASTA file", type = str, required = True)
-parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 4, required = False)
+parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 32, required = False)
 parser.add_argument("--max_variants",                   help = "maximal number of variants from the VCF file to process", type = int, default = None, required = False)
 parser.add_argument("--tensor_width",                   help = "tensor width", type = int, default = 150, required = False)
 parser.add_argument("--tensor_max_height",              help = "max tensor height", type = int, default = 70, required = False)
@@ -76,7 +76,7 @@ vcf_name = os.path.basename(input_params.vcf) #vcf base name
 
 variants_df['vcf'] = vcf_name
 
-variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv.gz"))
+variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv"), index=False)
 
 t_exec = time.time() - t0 #total execution time
 

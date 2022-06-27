@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 import numpy as np
+import random
 import pickle
 
 import torch
@@ -45,7 +46,7 @@ parser.add_argument("--seed",                                         help = "se
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
 parser.add_argument("--tensor_height",                                help = "tensor height", type = int, required = True)
 parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation/evaluation", type = float, default = 0, required = False)
-parser.add_argument("--batch_size",                                   help = "batch size at one SGD iteration", type = int, default = 8, required = False)
+parser.add_argument("--batch_size",                                   help = "batch size at one SGD iteration", type = int, default = 1, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
 parser.add_argument("--weight_decay",                                 help = "weight decay for optimizer", type = float, default = 0.1, required = False)
 parser.add_argument("--tot_epochs",                                   help = "total number of training epochs", type = int, default = 20, required = False)
@@ -83,6 +84,8 @@ torch.manual_seed(input_params.seed)
 if not input_params.inference_mode:
 
     train_eval_df = pd.read_csv(input_params.dataset, names=['path'])
+
+    train_eval_df = train_eval_df.sample(frac=1, random_state=1)
 
     eval_df = train_eval_df.sample(frac=input_params.val_fraction, random_state=1)
 
