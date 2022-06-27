@@ -28,7 +28,7 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-parser.add_argument("--vcf",                            help = "vcf file with variants", type = str, required = True)
+parser.add_argument("--vcf",                            help = "vcf or tsv file with variants", type = str, required = True)
 parser.add_argument("--output_dir",                     help = "output dir name", type = str, required = True)
 parser.add_argument("--chrom",                          help = "limit variants to a given chromosome", type = str, default = None, required = False)
 parser.add_argument("--chrom_start",                    help = "start position in the chromosome", type = int, default = None, required = False)

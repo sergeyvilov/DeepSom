@@ -65,7 +65,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     #vcf_in = pysam.VariantFile(vcf) #open the VCF file
 
-    vcf_basename = re.sub('.vcf(\.gz){0,1}$','', os.path.basename(vcf))
+    vcf_basename = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', os.path.basename(vcf))
 
     #all_samples = list(vcf_in.header.samples) #extract BAM sample names from the VCF header
 
@@ -105,8 +105,9 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alt,
             'true_label':rec.true_label, 'GERMLINE':rec.GERMLINE, 'Sample': rec.Sample}
 
-        # if 'POS_Build36' in rec.info.keys():
-        #     variant['pos'] = rec.info['POS_Build36']
+        if 'POS_Build36' in rec.info:
+             variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec.info).groups(1)[0])
+
         #
         # variant_annotations = {}
         #
@@ -118,7 +119,9 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         #
         # variant.update(variant_annotations)
 
-        bam_path = os.path.join(bam_dir, rec.BAM +'.bam') #full path to the BAM file
+        bam_file_name = rec.BAM +'.bam'
+
+        bam_path = os.path.join(bam_dir, bam_file_name) #full path to the BAM file
 
         try:
 
