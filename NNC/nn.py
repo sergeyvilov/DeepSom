@@ -259,7 +259,7 @@ model_params = [p for p in model.parameters() if p.requires_grad] #model paramet
 
 optimizer = torch.optim.AdamW(model_params, lr=input_params.learning_rate, weight_decay=input_params.weight_decay) #define optimizer
 
-last_epoch = -1
+last_epoch = 0
 
 if input_params.load_weights:
 
@@ -280,7 +280,7 @@ if train_on:
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                             milestones=[input_params.lr_sch_milestones],
                                                             gamma=input_params.lr_sch_gamma,
-                                                            last_epoch=last_epoch, verbose=False) #define learning rate scheduler
+                                                            last_epoch=last_epoch-1, verbose=False) #define learning rate scheduler
 
 
 predictions_dir = os.path.join(input_params.output_dir, 'predictions') #dir to save predictions
@@ -292,9 +292,9 @@ if valid_on or test_on:
 if input_params.save_each:
     os.makedirs(weights_dir, exist_ok = True)
 
-tot_epochs = max(last_epoch+2, input_params.tot_epochs)
+tot_epochs = max(last_epoch, input_params.tot_epochs)
 
-for epoch in range(last_epoch+1, tot_epochs):
+for epoch in range(last_epoch, tot_epochs+1):
 
     if train_on:
 
@@ -324,7 +324,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
         misc.save_predictions(valid_pred, valid_dataset, predictions_dir, epoch) #save evaluation predictions on disk
 
-    if test_on and epoch==tot_epochs-1:
+    if test_on and epoch==tot_epochs:
 
         print(f'EPOCH {epoch}: Test/Inference...')
 
