@@ -14,8 +14,6 @@ import pickle
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from sklearn.model_selection import train_test_split
-
 sys.path.append('utils')
 
 import models               #model architecture
@@ -76,12 +74,13 @@ train_on, valid_on, test_on = 0, 0, 0 #will be set to 1 if the corresponding ope
 
 if input_params.train_dataset:
 
-    train_valid_images = pd.read_csv(input_params.train_dataset, names=['path'], squeeze=True).tolist()
+    train_valid_images = pd.read_csv(input_params.train_dataset, header=None).squeeze()
 
-    if input_params.val_fraction>0:
-        train_images, valid_images = train_test_split(train_valid_images, test_size=input_params.val_fraction, shuffle=True, random_state=1)
-    else:
-        train_images, valid_images = train_valid_images, []
+    train_valid_images = train_valid_images.sample(frac=1., random_state=1).tolist()
+
+    N_valid = int(input_params.val_fraction*len(train_valid_images))
+
+    valid_images, train_images = train_valid_images[:N_valid], train_valid_images[N_valid:]
 
     print(f'Train instances {len(train_images)}')
 
@@ -91,7 +90,7 @@ if input_params.train_dataset:
 
 if input_params.test_dataset:
 
-    test_images = pd.read_csv(input_params.test_dataset, names=['path'], squeeze=True).tolist()
+    test_images = pd.read_csv(input_params.test_dataset, header=None).squeeze().tolist()
 
     print(f'Test/Inference instances: {len(test_images)}')
 
@@ -299,7 +298,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
     if train_on:
 
-        print(f'Training for epoch: {epoch}')
+        print(f'EPOCH {epoch}: Training...')
 
         train_loss, train_pred = train_eval.model_train(model, optimizer, train_dataloader, device)
 
@@ -315,7 +314,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
     if valid_on:
 
-        print(f'Validating for epoch: {epoch}')
+        print(f'EPOCH {epoch}: Validating...')
 
         valid_loss, valid_pred = train_eval.model_eval(model, optimizer, valid_dataloader, device)
 
@@ -327,17 +326,17 @@ for epoch in range(last_epoch+1, tot_epochs):
 
     if test_on and epoch==tot_epochs-1:
 
+        print(f'EPOCH {epoch}: Test/Inference...')
+
         test_loss, test_pred = train_eval.model_eval(model, optimizer, test_dataloader, device)
 
         _, _, labels = zip(*test_pred)
 
-        print(labels)
-
-        if all(labels):
+        if not None in labels:
 
             test_ROC_AUC = misc.get_ROC(test_pred)
 
-            print(f'EPOCH: {epoch} - test loss:{test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
+            print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
         misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'predictions.vcf') #save evaluation predictions on disk
 

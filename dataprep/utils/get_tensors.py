@@ -84,9 +84,9 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     vcf_in['Sample'] = vcf_in['info'].apply(lambda x: re.search('Sample=([^;]*)',x).groups(1)[0] if 'Sample=' in x else None)
 
-    vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: True if 'GERMLINE' in x else False)
+    vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: 1 if 'GERMLINE' in x else 0).astype(int)
 
-    vcf_in['true_label'] = vcf_in['info'].apply(lambda x: False if 'NON-SOMATIC' in x else True if 'SOMATIC' in x else None)
+    vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 0 if 'NON-SOMATIC' in x else 1 if 'SOMATIC' in x else None).astype(int)
 
     vcf_in['chrom'] = vcf_in['chrom'].astype(str)
 

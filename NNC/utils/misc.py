@@ -132,7 +132,7 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
             f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name for the variant">\n')
             f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name for the variant">\n')
-            f.write('##INFO=<ID=GERMLINE,Number=.,Type=String,Description="Germline variant">\n')  
+            f.write('##INFO=<ID=GERMLINE,Number=1,Type=Integer,Description="Germline variant">\n')  
             f.write('##INFO=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth; some reads may have been filtered">\n')
             f.write('##INFO=<ID=VAF,Number=1,Type=Float,Description="VAF from mutect read filter if available">\n')
             f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="Alternative allele frequency as in GNOMAD">\n')
