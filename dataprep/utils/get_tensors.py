@@ -57,12 +57,6 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     if not simulate:
         os.makedirs(output_dir, exist_ok=True)
 
-    if bam_matching_csv:
-        #matching table between BAM sample name and BAM file name
-        #otherwise, the INFO filed of the VCF file should have the BAM=bam_file_name.bam record
-        bam_matching = pd.read_csv(bam_matching_csv, names=['BAM_sample', 'BAM_file'], squeeze=True, index_col=0)
-        bam_matching = bam_matching.apply(lambda x:x.replace('.bam','')+'.bam')
-
     #vcf_in = pysam.VariantFile(vcf) #open the VCF file
 
     vcf_basename = os.path.basename(vcf) #name w/o path

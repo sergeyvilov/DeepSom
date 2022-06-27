@@ -338,7 +338,7 @@ for epoch in range(last_epoch+1, tot_epochs):
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
-        misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'predictions.vcf') #save evaluation predictions on disk
+        misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'final_predictions.vcf') #save evaluation predictions on disk
 
 
 print('Done')
