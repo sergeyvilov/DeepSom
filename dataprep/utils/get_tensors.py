@@ -25,6 +25,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                refgen_fa :str,                        #reference genome FASTA file
                tensor_opts :Dict,                     #options for variant tensor encoding
                Lbatch :Optional[int] = 1,             #how many tensors put in each batch
+               shuffle_vcf :Optional[bool] = False,   #shuffle rows in the vcf before making imgb batches
                chrom :Optional[str] = None,           #chromosome name
                chrom_start :Optional[int] = None,     #start position in the chromosome
                chrom_stop :Optional[int] = None,      #stop position in the chromosome
@@ -72,7 +73,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     #iterate over the records of the vcf file
 
-    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'])
+    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'], usecols = [i for i in range(8)])
 
     vcf_in['BAM'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
 
@@ -83,6 +84,9 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 0 if 'NON-SOMATIC' in x else 1 if 'SOMATIC' in x else None).astype(int)
 
     vcf_in['chrom'] = vcf_in['chrom'].astype(str)
+
+    if shuffle_vcf:
+        vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
 
     #vcf_in['vartype'] = vcf_in[['ref','alt']].apply(lambda x: 'SNP' if  len(x.ref)==len(x.alt) else 'INDEL', axis=1)
 

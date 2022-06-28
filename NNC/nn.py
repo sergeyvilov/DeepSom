@@ -39,6 +39,7 @@ parser.add_argument("--val_fraction",                                 help = "fr
 parser.add_argument("--batch_size",                                   help = "batch size at one SGD iteration", type = int, default = 1, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
 parser.add_argument("--weight_decay",                                 help = "weight decay for optimizer", type = float, default = 0.1, required = False)
+parser.add_argument("--dropout",                                      help = "dropout in fully connected layers", type = float, default = 0.5, required = False)
 parser.add_argument("--tot_epochs",                                   help = "total number of training epochs", type = int, default = 20, required = False)
 parser.add_argument("--lr_sch_milestones",                            help = "epoch at which the learning rate should be reduced", type = int, default = 15, required = False)
 parser.add_argument("--lr_sch_gamma",                                 help = "learning rate reduction factor", type = float, default = 0.1, required = False)
@@ -57,7 +58,7 @@ for param_name in ['train_dataset', 'test_dataset', '\\',
 'val_fraction', '\\',
 'output_dir', '\\',
 'tensor_width','tensor_height', '\\',
-'batch_size', 'learning_rate','weight_decay',  '\\',
+'batch_size', 'learning_rate','weight_decay', 'dropout', '\\',
 'tot_epochs', 'lr_sch_milestones', 'lr_sch_gamma', '\\',
 'save_each',  '\\']:
     if param_name == '\\':
@@ -246,7 +247,7 @@ else:
     print('\nCUDA device: CPU\n')
 
 
-model = models.ConvNN(dropout=0.5, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
+model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
 
 model = model.to(device) #model to CUDA
 
@@ -292,9 +293,9 @@ if valid_on or test_on:
 if input_params.save_each:
     os.makedirs(weights_dir, exist_ok = True)
 
-tot_epochs = max(last_epoch, input_params.tot_epochs)
+tot_epochs = max(last_epoch+1, input_params.tot_epochs)
 
-for epoch in range(last_epoch, tot_epochs+1):
+for epoch in range(last_epoch+1, tot_epochs+1):
 
     if train_on:
 
@@ -308,7 +309,7 @@ for epoch in range(last_epoch, tot_epochs+1):
 
         print(f'EPOCH: {epoch} - train loss: {train_loss:.4}, train ROC AUC: {train_ROC_AUC:.4}')
 
-        if input_params.save_each!=0 and (epoch+1)%input_params.save_each==0: #save model weights
+        if input_params.save_each!=0 and epoch%input_params.save_each==0: #save model weights
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 

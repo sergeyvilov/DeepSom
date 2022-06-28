@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
 
 # Construct variant tensors for each variant in a given VCF file.
 
@@ -9,6 +7,8 @@ import time
 import argparse
 
 import pandas as pd
+
+print(sys.version)
 
 sys.path.append('utils/')
 
@@ -37,6 +37,7 @@ parser.add_argument("--bam_dir",                        help = "folder with bam 
 parser.add_argument("--bam_matching_csv",               help = "matching between BAM sample name and BAM file name, not needed if a BAM record is present in VCF annotations", type = str, default = '', required = False)
 parser.add_argument("--refgen_fa",                      help = "reference genome FASTA file", type = str, required = True)
 parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 32, required = False)
+parser.add_argument("--shuffle_vcf",                    help = "shuffle rows in the input vcf", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--max_variants",                   help = "maximal number of variants from the VCF file to process", type = int, default = None, required = False)
 parser.add_argument("--tensor_width",                   help = "tensor width", type = int, default = 150, required = False)
 parser.add_argument("--tensor_max_height",              help = "max tensor height", type = int, default = 70, required = False)
