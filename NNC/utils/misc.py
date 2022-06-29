@@ -1,57 +1,75 @@
-import os
+import os, sys
 import pandas as pd
+
+import builtins
+import time
 
 import torch
 from sklearn.metrics import roc_curve, auc
 
-def resample(df,                #dataframe with 'labels' column
-            resample_mode       #None, 'upsample' or 'downsample'
-            ):
-    """
-    Equilibrate classes in the dataframe by resampling
+class dotdict(dict):
+    '''
+    Dictionary with dot.notation access to attributes
+    '''
 
-    resample_mode:
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
-    None: do not resample
-    "upsample": equilibrate classes by upsampling to the overrepresented class
-    "downsample": equilibrate classes by downsampling to the underrepresented class
+#redefine print function for logging
+def print(*args, **kwargs):
+    now = time.strftime("[%Y/%m/%d-%H:%M:%S]-", time.localtime()) #place current time at the beggining of each printed line
+    builtins.print(now, *args, **kwargs)
+    sys.stdout.flush()
 
-    """
-
-    if len(df)==0 or str(resample_mode)=='None':
-        return df
-
-    current_class_counts = df['label'].value_counts()
-
-    if resample_mode == 'upsample':
-
-        new_class_counts = [(class_name, current_class_counts.max()) for class_name in
-                               df['label'].unique()]
-
-    elif resample_mode == 'downsample':
-
-        new_class_counts = [(class_name, current_class_counts.min()) for class_name in
-                               df['label'].unique()]
-
-    else:
-
-        raise Exception(f'Resample mode not recognized: {resample_mode}')
-
-    resampled_df = pd.DataFrame()
-
-    for class_name, class_counts in new_class_counts:
-
-        class_df = df.loc[df['label']==class_name]
-
-        replace = class_counts>current_class_counts[class_name] #will be True only for upsampling
-
-        resampled_class_df = class_df.sample(n=class_counts, replace=replace, random_state=1)
-
-        resampled_df = pd.concat([resampled_df, resampled_class_df])
-
-    resampled_df = resampled_df.sample(frac=1, random_state=1)
-
-    return resampled_df
+# def resample(df,                #dataframe with 'labels' column
+#             resample_mode       #None, 'upsample' or 'downsample'
+#             ):
+#     """
+#     Equilibrate classes in the dataframe by resampling
+#
+#     resample_mode:
+#
+#     None: do not resample
+#     "upsample": equilibrate classes by upsampling to the overrepresented class
+#     "downsample": equilibrate classes by downsampling to the underrepresented class
+#
+#     """
+#
+#     if len(df)==0 or str(resample_mode)=='None':
+#         return df
+#
+#     current_class_counts = df['label'].value_counts()
+#
+#     if resample_mode == 'upsample':
+#
+#         new_class_counts = [(class_name, current_class_counts.max()) for class_name in
+#                                df['label'].unique()]
+#
+#     elif resample_mode == 'downsample':
+#
+#         new_class_counts = [(class_name, current_class_counts.min()) for class_name in
+#                                df['label'].unique()]
+#
+#     else:
+#
+#         raise Exception(f'Resample mode not recognized: {resample_mode}')
+#
+#     resampled_df = pd.DataFrame()
+#
+#     for class_name, class_counts in new_class_counts:
+#
+#         class_df = df.loc[df['label']==class_name]
+#
+#         replace = class_counts>current_class_counts[class_name] #will be True only for upsampling
+#
+#         resampled_class_df = class_df.sample(n=class_counts, replace=replace, random_state=1)
+#
+#         resampled_df = pd.concat([resampled_df, resampled_class_df])
+#
+#     resampled_df = resampled_df.sample(frac=1, random_state=1)
+#
+#     return resampled_df
 
 
 def get_ROC(predictions):
@@ -69,7 +87,7 @@ def get_ROC(predictions):
     return auROC
 
 
-def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=False):
+def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
 
     '''
     Save predictions in a vcf file
@@ -90,8 +108,8 @@ def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=Fal
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
         variant_info += f'nnc_score={score:.4}'
-        if label:
-            variant_info += ';true_label={label}'
+        if label!=None:
+            variant_info += f';true_label={int(label)}'
         variant_row.append(variant_info)
         output_list.append(variant_row)
 
@@ -100,19 +118,21 @@ def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=Fal
     chrom_dict = {'X':23,'Y':24,'M':25,'MT':25,'chrX':23,'chrY':24,'chrM':25,'chrMT':25}
     output_df.sort_values(by=['#CHROM', 'POS'], key=lambda a:a.apply(lambda x:int(x) if type(x)==int or x.isnumeric() else chrom_dict.get(x,100)), inplace=True) #sort variants by chrom
 
-    if not inference_mode:
+    if not output_name:
         #if output_name not provided, infer output_name from output_dir and epoch
         output_name = os.path.join(output_dir, f'epoch_{epoch}.vcf')
     else:
         #make sure that the path to the predictions vcf exists
         #os.makedirs(os.path.dirname(output_name), exist_ok=True)
-        output_name = os.path.join(output_dir, f'inference.vcf')
+        output_name = os.path.join(output_dir, output_name)
 
     #write vcf header
     with open(output_name, 'w') as f:
             f.write('##fileformat=VCFv4.2\n')
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
             f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name for the variant">\n')
+            f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name for the variant">\n')
+            f.write('##INFO=<ID=GERMLINE,Number=1,Type=Integer,Description="Germline variant">\n')
             f.write('##INFO=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth; some reads may have been filtered">\n')
             f.write('##INFO=<ID=VAF,Number=1,Type=Float,Description="VAF from mutect read filter if available">\n')
             f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="Alternative allele frequency as in GNOMAD">\n')
@@ -123,6 +143,7 @@ def save_predictions(predictions, dataset, output_dir, epoch, inference_mode=Fal
 
     output_df.to_csv(output_name, mode='a', sep='\t', index=False) #append predictions to the vcf file
 
+    print(f'Predictions saved in {output_name}')
     #pd.DataFrame(predictions, columns=['imgb_path', 'imgb_index', 'score', 'label']).to_csv(output_name, index=False)
 
 

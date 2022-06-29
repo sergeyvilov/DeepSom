@@ -73,7 +73,7 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
             outputs = model(tensors)
 
-            if not inference_mode:
+            if not None in labels:
 
                 #in inference mode, all labels are None
 

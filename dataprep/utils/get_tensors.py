@@ -5,7 +5,7 @@ import re
 
 import pandas as pd
 
-import pysam #library for reading VCF files
+#import pysam #library for reading VCF files
 
 from variant_to_tensor import variant_to_tensor #function to form a tensor out of a variant
 
@@ -25,6 +25,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                refgen_fa :str,                        #reference genome FASTA file
                tensor_opts :Dict,                     #options for variant tensor encoding
                Lbatch :Optional[int] = 1,             #how many tensors put in each batch
+               shuffle_vcf :Optional[bool] = False,   #shuffle rows in the vcf before making imgb batches
                chrom :Optional[str] = None,           #chromosome name
                chrom_start :Optional[int] = None,     #start position in the chromosome
                chrom_stop :Optional[int] = None,      #stop position in the chromosome
@@ -57,15 +58,10 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     if not simulate:
         os.makedirs(output_dir, exist_ok=True)
 
-    if bam_matching_csv:
-        #matching table between BAM sample name and BAM file name
-        #otherwise, the INFO filed of the VCF file should have the BAM=bam_file_name.bam record
-        bam_matching = pd.read_csv(bam_matching_csv, names=['BAM_sample', 'BAM_file'], squeeze=True, index_col=0)
-        bam_matching = bam_matching.apply(lambda x:x.replace('.bam','')+'.bam')
-
     #vcf_in = pysam.VariantFile(vcf) #open the VCF file
 
-    vcf_basename = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', os.path.basename(vcf))
+    vcf_basename = os.path.basename(vcf) #name w/o path
+    vcf_short_name = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', vcf_basename) #remove extension
 
     #all_samples = list(vcf_in.header.samples) #extract BAM sample names from the VCF header
 
@@ -77,15 +73,20 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     #iterate over the records of the vcf file
 
-    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'])
+    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'], usecols = [i for i in range(8)])
 
     vcf_in['BAM'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
 
     vcf_in['Sample'] = vcf_in['info'].apply(lambda x: re.search('Sample=([^;]*)',x).groups(1)[0] if 'Sample=' in x else None)
 
-    vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: True if 'GERMLINE' in x else False)
+    vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: 1 if 'GERMLINE' in x else 0).astype(int)
 
-    vcf_in['true_label'] = vcf_in['info'].apply(lambda x: False if 'NON-SOMATIC' in x else True if 'SOMATIC' in x else None)
+    vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 0 if 'NON-SOMATIC' in x else 1 if 'SOMATIC' in x else None).astype(int)
+
+    vcf_in['chrom'] = vcf_in['chrom'].astype(str)
+
+    if shuffle_vcf:
+        vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
 
     #vcf_in['vartype'] = vcf_in[['ref','alt']].apply(lambda x: 'SNP' if  len(x.ref)==len(x.alt) else 'INDEL', axis=1)
 
@@ -164,7 +165,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
             #save the batch to the disk when it is full
 
-            batch_name = f'{vcf_basename}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+            batch_name = f'{vcf_short_name}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
 
             for i in range(-Lbatch,0):
                 variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
@@ -186,7 +187,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     if N_batch:
 
-        batch_name = f'{vcf_basename}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+        batch_name = f'{vcf_short_name}_{variants_list[-N_batch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
 
         for i in range(-N_batch,0):
             variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
