@@ -10,6 +10,7 @@ import sys
 import numpy as np
 import random
 import pickle
+import time
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -295,13 +296,19 @@ if input_params.save_each:
 
 tot_epochs = max(last_epoch+1, input_params.tot_epochs)
 
+tot_train_time, tot_test_time = 0, 0
+
 for epoch in range(last_epoch+1, tot_epochs+1):
 
     if train_on:
 
         print(f'EPOCH {epoch}: Training...')
 
+        start_time = time.time()
+
         train_loss, train_pred = train_eval.model_train(model, optimizer, train_dataloader, device)
+
+        tot_train_time += time.time() - start_time
 
         lr_scheduler.step() #for MultiStepLR we take a step every epoch
 
@@ -329,7 +336,11 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         print(f'EPOCH {epoch}: Test/Inference...')
 
+        start_time = time.time()
+
         test_loss, test_pred = train_eval.model_eval(model, optimizer, test_dataloader, device)
+
+        tot_test_time = time.time() - start_time
 
         _, _, labels = zip(*test_pred)
 
@@ -342,4 +353,6 @@ for epoch in range(last_epoch+1, tot_epochs+1):
         misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'final_predictions.vcf') #save evaluation predictions on disk
 
 
+print('Peak memory allocation:',torch.cuda.max_memory_allocated(device))
+print(f'Total train time: {round(tot_train_time)}s, Test/inference time: {round(tot_test_time)}s')
 print('Done')
