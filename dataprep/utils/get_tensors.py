@@ -32,6 +32,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                max_variants :Optional[int] = None,    #stop when this number of variants is reached
                bam_matching_csv :Optional[str] = '',  #matching table between BAM sample name and BAM file name
                simulate :Optional[bool] = False,      #simulate workflow, don't dump tensors
+               replacement_csv :Optional[str] = None, #randomly replace mutational signatures by sampling variants from this file
              ):
     '''
     Create a pileup tensor for each variant in the given VCF file.
@@ -73,7 +74,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     #iterate over the records of the vcf file
 
-    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'], usecols = [i for i in range(8)])
+    vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'], dtype={'chrom':str}, usecols = [i for i in range(8)])
 
     vcf_in['BAM'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
 
@@ -83,10 +84,11 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 0 if 'NON-SOMATIC' in x else 1 if 'SOMATIC' in x else None).astype(int)
 
-    vcf_in['chrom'] = vcf_in['chrom'].astype(str)
-
     if shuffle_vcf:
         vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
+
+    if replacement_csv:
+        replacement_df = pd.read_csv(replacement_csv, names=['chrom', 'refpos', 'ref', 'alt'], dtype={'chrom':str, 'refpos':int})
 
     #vcf_in['vartype'] = vcf_in[['ref','alt']].apply(lambda x: 'SNP' if  len(x.ref)==len(x.alt) else 'INDEL', axis=1)
 
@@ -109,6 +111,16 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         if 'POS_Build36' in rec.info:
              variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec.info).groups(1)[0])
 
+        if replacement_csv:
+
+            chrom, refpos, ref, alt = replacement_df.sample(n=1).values[0]
+
+            replacement_variant = {'chrom':chrom, 'refpos':refpos, 'ref':ref, 'alt':alt}
+
+        else:
+
+            replacement_variant = None
+
         #
         # variant_annotations = {}
         #
@@ -127,7 +139,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
         try:
 
             #get a tensor variant tensor for the current variant
-            variant_tensor, ref_support, VAF, DP = variant_to_tensor(variant, refgen_fa, bam_path,
+            variant_tensor, ref_support, VAF, DP = variant_to_tensor(variant, refgen_fa, bam_path, replacement_variant=replacement_variant,
                  **tensor_opts) #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
 
         except Exception as exc:
@@ -156,6 +168,9 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
             }
 
         variant_record.update(variant)
+
+        for key in ('chrom', 'refpos', 'ref', 'alt'):
+            variant_record['replaced_' + key] = replacement_variant[key] if replacement_variant else None
 
         variants_list.append(variant_record)
 

@@ -175,6 +175,7 @@ class TensorDataset(Dataset):
 
                 #if there are not enough reads, pad tensor with 0 to reach the target_height
                 padding_tensor = np.zeros((self.target_height-tensor_height, tensor_width, 14))
+
                 full_tensor_h = np.concatenate((tensor, padding_tensor), axis = 0) #concatenate over the reads axis
                 full_tensor_h = np.roll(full_tensor_h,max(self.target_height//2-tensor_height//2,0),axis=0) #put the piledup reads in the center
 

@@ -99,10 +99,16 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
 
     output_list = list()
 
+    predictions_snps, predictions_indels = list(), list()
+
     #loop over all predictions
     for tensor_pos, score, label in predictions:
         variant_meta = dataset.variant_meta[tensor_pos[0]][tensor_pos[1]] #locate variant meta information
         variant_row = [variant_meta['chrom'], variant_meta['pos'], '.', variant_meta['ref'], variant_meta['alt'], '.', '.']  #this will be a row in the output vcf file
+        if len(variant_meta['ref']) == len(variant_meta['alt']):
+            predictions_snps.append((None,score,label))
+        else:
+            predictions_indels.append((None,score,label))
         variant_info = '' #all supplementary information goes to the INFO field
         for key in ['vcf', 'BAM', 'DP', 'VAF', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
             if key in variant_meta.keys():
@@ -112,6 +118,11 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
             variant_info += f';true_label={int(label)}'
         variant_row.append(variant_info)
         output_list.append(variant_row)
+
+    roc_snps, roc_indels = get_ROC(predictions_snps), get_ROC(predictions_indels)
+
+    print(f'ROC AUC SNPs: {roc_snps:.4}')
+    print(f'ROC AUC INDELs: {roc_indels:.4}')
 
     output_df = pd.DataFrame(output_list, columns=['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']) #list to a DataFrame
 
