@@ -460,6 +460,6 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
     #    tensor.update({'indels_chn':indels_chn.astype(bool)})
 
 
-    ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-10:variant_column_idx+11]) # reference sequence around the variant
+    ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-30:variant_column_idx+31]) # reference sequence around the variant
 
     return tensor, ref_support, VAF0, DP0 #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor

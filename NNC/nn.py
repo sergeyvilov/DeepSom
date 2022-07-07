@@ -321,6 +321,8 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
+            misc.save_predictions(train_pred, train_dataset, predictions_dir, f'training_epoch_{epoch}.vcf') #save evaluation predictions on disk
+
     if valid_on:
 
         print(f'EPOCH {epoch}: Validating...')
@@ -331,7 +333,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
-        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, epoch) #save evaluation predictions on disk
+        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, f'validation_epoch_{epoch}.vcf') #save evaluation predictions on disk
 
     if test_on and epoch==tot_epochs:
 
@@ -351,7 +353,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
-        misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'final_predictions.vcf') #save evaluation predictions on disk
+        misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save evaluation predictions on disk
 
 
 print('Peak memory allocation:',torch.cuda.max_memory_allocated(device))

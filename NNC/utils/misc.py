@@ -87,7 +87,7 @@ def get_ROC(predictions):
     return auROC
 
 
-def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
+def save_predictions(predictions, dataset, output_dir, output_name):
 
     '''
     Save predictions in a vcf file
@@ -109,8 +109,11 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
             predictions_snps.append((None,score,label))
         else:
             predictions_indels.append((None,score,label))
-        variant_info = '' #all supplementary information goes to the INFO field
-        for key in ['vcf', 'BAM', 'DP', 'VAF', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
+        if 'info' in variant_meta.keys():
+            variant_info = variant_meta['info'] + ';'
+        else:
+            variant_info = '' #all supplementary information goes to the INFO field
+        for key in ['vcf', 'BAM', 'DP', 'VAF', 'DP0', 'VAF0', 'refseq', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
         variant_info += f'nnc_score={score:.4}'
@@ -129,13 +132,9 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
     chrom_dict = {'X':23,'Y':24,'M':25,'MT':25,'chrX':23,'chrY':24,'chrM':25,'chrMT':25}
     output_df.sort_values(by=['#CHROM', 'POS'], key=lambda a:a.apply(lambda x:int(x) if type(x)==int or x.isnumeric() else chrom_dict.get(x,100)), inplace=True) #sort variants by chrom
 
-    if not output_name:
-        #if output_name not provided, infer output_name from output_dir and epoch
-        output_name = os.path.join(output_dir, f'epoch_{epoch}.vcf')
-    else:
-        #make sure that the path to the predictions vcf exists
-        #os.makedirs(os.path.dirname(output_name), exist_ok=True)
-        output_name = os.path.join(output_dir, output_name)
+    #make sure that the path to the predictions vcf exists
+    #os.makedirs(os.path.dirname(output_name), exist_ok=True)
+    output_name = os.path.join(output_dir, output_name)
 
     #write vcf header
     with open(output_name, 'w') as f:
@@ -143,10 +142,13 @@ def save_predictions(predictions, dataset, output_dir, epoch, output_name=None):
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
             f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name for the variant">\n')
             f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name for the variant">\n')
+            f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name for the variant">\n')
             f.write('##INFO=<ID=GERMLINE,Number=1,Type=Integer,Description="Germline variant">\n')
-            f.write('##INFO=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth; some reads may have been filtered">\n')
-            f.write('##INFO=<ID=VAF,Number=1,Type=Float,Description="VAF from mutect read filter if available">\n')
+            f.write('##INFO=<ID=SOMATIC,Number=1,Type=Integer,Description="Somatic variant">\n')
+            f.write('##INFO=<ID=DP0,Number=1,Type=Integer,Description="DP from BAM file">\n')
+            f.write('##INFO=<ID=VAF0,Number=1,Type=Float,Description="VAF from BAM file">\n')
             f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="Alternative allele frequency as in GNOMAD">\n')
+            f.write('##INFO=<ID=refseq,Number=.,Type=String,Description="Reference sequence around the variant site, 30 bases to the left and $half_n_ref_bases bases to the right">\n')
             f.write('##INFO=<ID=batch_name,Number=.,Type=String,Description="Name of the imgb batch containing the variant">\n')
             f.write('##INFO=<ID=imgb_index,Number=1,Type=Integer,Description="Index of the variant in the imgb batch">\n')
             f.write('##INFO=<ID=nnc_score,Number=1,Type=Float,Description="Neural Network classification score">\n')

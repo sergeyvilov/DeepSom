@@ -34,7 +34,6 @@ parser.add_argument("--chrom",                          help = "limit variants t
 parser.add_argument("--chrom_start",                    help = "start position in the chromosome", type = int, default = None, required = False)
 parser.add_argument("--chrom_stop",                     help = "stop position in the chromosome", type = int, default = None, required = False)
 parser.add_argument("--bam_dir",                        help = "folder with bam files", type = str, required = True)
-parser.add_argument("--bam_matching_csv",               help = "matching between BAM sample name and BAM file name, not needed if a BAM record is present in VCF annotations", type = str, default = '', required = False)
 parser.add_argument("--refgen_fa",                      help = "reference genome FASTA file", type = str, required = True)
 parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 32, required = False)
 parser.add_argument("--shuffle_vcf",                    help = "shuffle rows in the input vcf", type = lambda x: bool(str2bool(x)), default = False, required = False)
@@ -79,7 +78,7 @@ vcf_name = os.path.basename(input_params.vcf) #vcf base name
 
 variants_df['vcf'] = vcf_name
 
-variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv"), index=False)
+variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv"), sep="\t", index=False)
 
 t_exec = time.time() - t0 #total execution time
 
