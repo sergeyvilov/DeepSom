@@ -298,6 +298,8 @@ tot_epochs = max(last_epoch+1, input_params.tot_epochs)
 
 tot_train_time, tot_test_time = 0, 0
 
+train_pred, test_pred = [], []
+
 for epoch in range(last_epoch+1, tot_epochs+1):
 
     if train_on:
@@ -355,6 +357,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
         misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save evaluation predictions on disk
 
 
-print('Peak memory allocation:',torch.cuda.max_memory_allocated(device))
-print(f'Total train time: {round(tot_train_time)}s, Test/inference time: {round(tot_test_time)}s')
+print(f'Peak memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
+print(f'Total train time: {round(tot_train_time)} s ({len(train_pred)*(tot_epochs-last_epoch)/(tot_train_time+1):.3f} samples/s)')
+print(f'Test/inference time: {round(tot_test_time)} s ({len(test_pred)/(tot_test_time+1):.3f} samples/s)')
 print('Done')
