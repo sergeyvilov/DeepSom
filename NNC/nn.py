@@ -31,7 +31,6 @@ parser = argparse.ArgumentParser("generate_tensors.py")
 parser.add_argument("--train_dataset",                                help = "Train dataset", type = str, default = None, required = False)
 parser.add_argument("--test_dataset",                                 help = "Dataset to evaluate on after the last epoch or perform inference", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--load_weights",                                 help = "load NN and optimizer weights from a previous run", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
@@ -54,7 +53,7 @@ assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
 for param_name in ['train_dataset', 'test_dataset', '\\',
-'load_weights', 'config_start_base', '\\',
+'config_start_base', '\\',
 'seed', '\\',
 'val_fraction', '\\',
 'output_dir', '\\',
@@ -264,7 +263,7 @@ optimizer = torch.optim.AdamW(model_params, lr=input_params.learning_rate, weigh
 
 last_epoch = 0
 
-if input_params.load_weights:
+if input_params.config_start_base:
 
     if torch.cuda.is_available():
         #load on gpu
@@ -313,7 +312,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         lr_scheduler.step() #for MultiStepLR we take a step every epoch
 
-        train_ROC_AUC = misc.get_ROC(train_pred)
+        train_ROC_AUC, _ = misc.get_ROC(train_pred)
 
         print(f'EPOCH: {epoch} - train loss: {train_loss:.4}, train ROC AUC: {train_ROC_AUC:.4}')
 
@@ -329,7 +328,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         valid_loss, valid_pred = train_eval.model_eval(model, optimizer, valid_dataloader, device)
 
-        valid_ROC_AUC = misc.get_ROC(valid_pred)
+        valid_ROC_AUC, _ = misc.get_ROC(valid_pred)
 
         print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
@@ -349,7 +348,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         if not None in labels:
 
-            test_ROC_AUC = misc.get_ROC(test_pred)
+            test_ROC_AUC, _ = misc.get_ROC(test_pred)
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 

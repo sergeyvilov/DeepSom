@@ -1,11 +1,15 @@
 import os, sys
 import pandas as pd
+import numpy as np
 
 import builtins
 import time
 
 import torch
 from sklearn.metrics import roc_curve, auc
+
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
 
 class dotdict(dict):
     '''
@@ -78,13 +82,27 @@ def get_ROC(predictions):
     Compute ROC AUC from NN predictions
     '''
 
-    _, scores, labels = zip(*predictions)
+    _, y_pred, y_true = zip(*predictions)
 
-    fpr, tpr, _ = roc_curve(labels, scores)
+    y_pred, y_true = np.array(y_pred), np.array(y_true)
+
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred)
 
     auROC = auc(fpr, tpr)
 
-    return auROC
+    tpr_new = np.unique(np.hstack((np.linspace(0.01,0.05,5), np.linspace(0.05,0.95,19),  np.linspace(0.95,0.99,5))))
+
+    thr_new = np.interp(tpr_new, tpr[1:], thresholds[1:] )
+
+    tp = np.array([((y_true==(y_pred>thr))&(y_true==1)).sum() for thr in thr_new])
+    fp = np.array([((y_true!=(y_pred>thr))&(y_true==0)).sum() for thr in thr_new])
+
+    tpr_new = tp/y_true.sum()
+    fpr_new = fp/(y_true==0).sum()
+
+    ROC_df = pd.DataFrame({'output_threshold':thr_new, 'true_positives':tp, 'false_positives':fp, 'true_positive_rate':tpr_new, 'false_positive_rate':fpr_new})
+
+    return auROC, ROC_df
 
 
 def save_predictions(predictions, dataset, output_dir, output_name):
@@ -122,10 +140,15 @@ def save_predictions(predictions, dataset, output_dir, output_name):
         variant_row.append(variant_info)
         output_list.append(variant_row)
 
-    roc_snps, roc_indels = get_ROC(predictions_snps), get_ROC(predictions_indels)
+    roc_auc_snps, roc_curve_snps = get_ROC(predictions_snps)
 
-    print(f'ROC AUC SNPs: {roc_snps:.4}')
-    print(f'ROC AUC INDELs: {roc_indels:.4}')
+    roc_auc_indels, roc_curve_indels = get_ROC(predictions_indels)
+
+    print(f'ROC AUC SNPs: {roc_auc_snps:.4}\n')
+    builtins.print(roc_curve_snps)
+
+    print(f'ROC AUC INDELs: {roc_auc_indels:.4}\n')
+    builtins.print(roc_curve_indels)
 
     output_df = pd.DataFrame(output_list, columns=['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']) #list to a DataFrame
 
