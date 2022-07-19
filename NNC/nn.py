@@ -31,7 +31,6 @@ parser = argparse.ArgumentParser("generate_tensors.py")
 parser.add_argument("--train_dataset",                                help = "Train dataset", type = str, default = None, required = False)
 parser.add_argument("--test_dataset",                                 help = "Dataset to evaluate on after the last epoch or perform inference", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--load_weights",                                 help = "load NN and optimizer weights from a previous run", type = lambda x: bool(str2bool(x)), default = False, required = False)
 parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
@@ -54,7 +53,7 @@ assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
 for param_name in ['train_dataset', 'test_dataset', '\\',
-'load_weights', 'config_start_base', '\\',
+'config_start_base', '\\',
 'seed', '\\',
 'val_fraction', '\\',
 'output_dir', '\\',
@@ -175,6 +174,7 @@ class TensorDataset(Dataset):
 
                 #if there are not enough reads, pad tensor with 0 to reach the target_height
                 padding_tensor = np.zeros((self.target_height-tensor_height, tensor_width, 14))
+
                 full_tensor_h = np.concatenate((tensor, padding_tensor), axis = 0) #concatenate over the reads axis
                 full_tensor_h = np.roll(full_tensor_h,max(self.target_height//2-tensor_height//2,0),axis=0) #put the piledup reads in the center
 
@@ -263,7 +263,7 @@ optimizer = torch.optim.AdamW(model_params, lr=input_params.learning_rate, weigh
 
 last_epoch = 0
 
-if input_params.load_weights:
+if input_params.config_start_base:
 
     if torch.cuda.is_available():
         #load on gpu
@@ -298,6 +298,8 @@ tot_epochs = max(last_epoch+1, input_params.tot_epochs)
 
 tot_train_time, tot_test_time = 0, 0
 
+train_pred, test_pred = [], []
+
 for epoch in range(last_epoch+1, tot_epochs+1):
 
     if train_on:
@@ -312,7 +314,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         lr_scheduler.step() #for MultiStepLR we take a step every epoch
 
-        train_ROC_AUC = misc.get_ROC(train_pred)
+        train_ROC_AUC, _ = misc.get_ROC(train_pred)
 
         print(f'EPOCH: {epoch} - train loss: {train_loss:.4}, train ROC AUC: {train_ROC_AUC:.4}')
 
@@ -320,17 +322,19 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
+            misc.save_predictions(train_pred, train_dataset, predictions_dir, f'training_epoch_{epoch}.vcf') #save evaluation predictions on disk
+
     if valid_on:
 
         print(f'EPOCH {epoch}: Validating...')
 
         valid_loss, valid_pred = train_eval.model_eval(model, optimizer, valid_dataloader, device)
 
-        valid_ROC_AUC = misc.get_ROC(valid_pred)
+        valid_ROC_AUC, _ = misc.get_ROC(valid_pred)
 
         print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
-        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, epoch) #save evaluation predictions on disk
+        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, f'validation_epoch_{epoch}.vcf') #save evaluation predictions on disk
 
     if test_on and epoch==tot_epochs:
 
@@ -346,13 +350,14 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         if not None in labels:
 
-            test_ROC_AUC = misc.get_ROC(test_pred)
+            test_ROC_AUC, _ = misc.get_ROC(test_pred)
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
-        misc.save_predictions(test_pred, test_dataset, predictions_dir, epoch, 'final_predictions.vcf') #save evaluation predictions on disk
+        misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save evaluation predictions on disk
 
 
-print('Peak memory allocation:',torch.cuda.max_memory_allocated(device))
-print(f'Total train time: {round(tot_train_time)}s, Test/inference time: {round(tot_test_time)}s')
+print(f'Peak memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
+print(f'Total train time: {round(tot_train_time)} s ({len(train_pred)*(tot_epochs-last_epoch)/(tot_train_time+1):.3f} samples/s)')
+print(f'Test/inference time: {round(tot_test_time)} s ({len(test_pred)/(tot_test_time+1):.3f} samples/s)')
 print('Done')

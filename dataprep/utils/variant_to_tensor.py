@@ -116,10 +116,11 @@ def compute_VAF_DP(reads, variant, vartype, varlen, ins_at_variant):
 
 def variant_to_tensor(variant, ref_fasta_file, bam_file,
                             tensor_width = 150, # tensor width: 2x the most probable read length
-                            tensor_max_height = 30, #max tensor height, the probability to have a read depth above this value should be small
+                            tensor_max_height = 70, #max tensor height, the probability to have a read depth above this value should be small
                             tensor_sort_by_variant = False, #sort reads by value in the variant column
                             tensor_check_variant = 'vaf_only', # perform basic checks for snps/indels: 'snps', 'indels' or 'vaf_only'
                             tensor_crop_strategy = 'topbottom', #crop strategy when read depth exceeds tensor_max_height
+                            replacement_variant = None, #replace mutation signatures with this variant, only for SNPs
                             ):
 
     '''
@@ -360,6 +361,58 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
 
     ref_bases = get_ref_bases(variant, vartype=='ins', max_ins_length_at_variant)
 
+
+    def replace_bases(replacement_variant, variant_old, reads_im_old, ref_bases_old):
+        '''
+        Replaces sequences for a given variant, while keeping read qualities and flags of original reads
+        USE ONLY WITH SNPs
+        '''
+
+        #variant_column = reads_im_old.shape[2]//2
+
+        new_alt = replacement_variant['alt']
+
+        #get new fragment of reference sequence
+        new_ref_seq_num = get_ref_bases(replacement_variant, False, 0)
+        new_ref = decode_bases(new_ref_seq_num[variant_column_idx])
+
+        #numerical encoding for bases
+        new_ref_num = new_ref_seq_num[variant_column_idx]
+        new_alt_num = encode_bases(new_alt)
+
+        diff = reads_im_old[:,:,0]-ref_bases_old
+        diff = np.where(diff==0,1,-1) #indicate whether the current position is diferent from reference bases
+        diff[reads_im_old[:,:,0]>3] = 0 #special letters (N,K,*, etc): we won't change them
+
+        new_ref_seq_num_exp = np.expand_dims(new_ref_seq_num,0) + np.zeros((reads_im_old.shape[0],1)) #expand numerical encoding of reference bases on all reads
+
+        new_reads_num = np.zeros((reads_im_old.shape[0],reads_im_old.shape[1])) #numerical encoding of reads bases
+
+        new_reads_num[diff==1] = new_ref_seq_num_exp[diff==1] #copy reference bases to read bases when there's no change
+        new_reads_num[diff==0] = reads_im[:,:,0][diff==0] #copy special letters
+
+        #when there's a difference btw read and reference base, choose any letter which is not the reference base
+        for i,j in np.vstack(np.where(diff==-1)).T:
+            choice =[0,1,2,3]
+            choice.remove(new_ref_seq_num_exp[i,j])
+            new_reads_num[i,j] = np.random.choice(choice)
+
+        #variant column is special: we replace the alternative allele
+        read_supp_alt = (reads_im_old[:,variant_column_idx,0].astype(int)==encode_bases(variant_old['alt']))
+        new_reads_num[read_supp_alt, variant_column_idx] = new_alt_num
+
+        reads_im_new = np.zeros((reads_im_old.shape))
+        reads_im_new[:,:,1] = reads_im_old[:,:,1]
+        reads_im_new[:,:,0] = new_reads_num
+
+        ref_bases_new = new_ref_seq_num
+
+        return reads_im_new, ref_bases_new
+
+    if replacement_variant and vartype=='snp':
+
+        reads_im, ref_bases = replace_bases(replacement_variant, variant, reads_im, ref_bases)
+
     p_hot_reads = np.zeros((N_reads,tensor_width,4)) # p-hot encoding of read bases probabilities: each channel gives the probability of the corresponding base (ACTG)
 
     for basis_idx in range(4):
@@ -407,6 +460,6 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
     #    tensor.update({'indels_chn':indels_chn.astype(bool)})
 
 
-    ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-10:variant_column_idx+11]) # reference sequence around the variant
+    ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-30:variant_column_idx+31]) # reference sequence around the variant
 
     return tensor, ref_support, VAF0, DP0 #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
