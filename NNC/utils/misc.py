@@ -82,6 +82,9 @@ def get_ROC(predictions):
     Compute ROC AUC from NN predictions
     '''
 
+    if len (predictions)==0:
+        return -1.0, 'ROC curve can not be displayed'
+
     _, y_pred, y_true = zip(*predictions)
 
     y_pred, y_true = np.array(y_pred), np.array(y_true)
