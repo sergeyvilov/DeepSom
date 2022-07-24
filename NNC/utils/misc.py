@@ -1,6 +1,7 @@
 import os, sys
 import pandas as pd
 import numpy as np
+import re
 
 import builtins
 import time
@@ -20,11 +21,42 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-#redefine print function for logging
+
 def print(*args, **kwargs):
+    '''
+    Redefine print function for logging
+    '''
     now = time.strftime("[%Y/%m/%d-%H:%M:%S]-", time.localtime()) #place current time at the beggining of each printed line
     builtins.print(now, *args, **kwargs)
     sys.stdout.flush()
+
+def extract_flanking_info(info):
+    '''
+    Extract information about flanking regions from an INFO string
+    '''
+    if 'flanking=' in info:
+        info = re.search('flanking=([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)',info)
+    else:
+        info = re.search('flanking_lVAF=([0-9\.\-]*);flanking_lDP=([0-9\.\-]*);flanking_rVAF=([0-9\.\-]*);flanking_rDP=([0-9\.\-]*)',info)
+    if info==None:
+        return (-1,-1,-1,-1) #negative value when the data is missing
+    return info.groups()
+
+def normalize_dp(dp, max_depth):
+    if dp>0:
+        return min(dp/max_depth,1) #normalize clip the right tail
+    else:
+        #negative value when the data is missing
+        return max(dp,-1) #clip the left tail
+
+def get_misc_tensor_data(imgb_batch_meta, max_depth):
+    '''
+    Extract information about flanking regions for all variants in the imgb batch
+    '''
+    info = [(d['VAF0'],d['DP0'],*extract_flanking_info(d['info'])) for d in imgb_batch_meta]
+    info = [list(map(float,item)) for item in info]
+    info = [[vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+    return info
 
 # def resample(df,                #dataframe with 'labels' column
 #             resample_mode       #None, 'upsample' or 'downsample'
@@ -79,10 +111,12 @@ def print(*args, **kwargs):
 def get_ROC(predictions):
 
     '''
-    Compute ROC AUC from NN predictions
+    Compute ROC from NN predictions,
+
+    return AUC and interpolated ROC curve
     '''
 
-    if len (predictions)==0:
+    if len(predictions)==0:
         return -1.0, 'ROC curve can not be displayed'
 
     _, y_pred, y_true = zip(*predictions)
@@ -93,12 +127,12 @@ def get_ROC(predictions):
 
     auROC = auc(fpr, tpr)
 
-    tpr_new = np.unique(np.hstack((np.linspace(0.01,0.05,5), np.linspace(0.05,0.95,19),  np.linspace(0.95,0.99,5))))
+    tpr_new = np.unique(np.hstack((np.linspace(0.01,0.05,5), np.linspace(0.05,0.95,19),  np.linspace(0.95,0.99,5)))) #interpolation grid
 
     thr_new = np.interp(tpr_new, tpr[1:], thresholds[1:] )
 
-    tp = np.array([((y_true==(y_pred>thr))&(y_true==1)).sum() for thr in thr_new])
-    fp = np.array([((y_true!=(y_pred>thr))&(y_true==0)).sum() for thr in thr_new])
+    tp = np.array([((y_true==(y_pred>thr))&(y_true==1)).sum() for thr in thr_new]) #true positives
+    fp = np.array([((y_true!=(y_pred>thr))&(y_true==0)).sum() for thr in thr_new]) #false positives
 
     tpr_new = tp/y_true.sum()
     fpr_new = fp/(y_true==0).sum()
@@ -113,10 +147,6 @@ def save_predictions(predictions, dataset, output_dir, output_name):
     '''
     Save predictions in a vcf file
     '''
-
-    #imgb_names,_=zip(*dataset.data)
-
-    #predictions = [(imgb_names[tensor_pos[0]], tensor_pos[1], score, label) for tensor_pos, score, label in predictions] #(imgb_name, pos_in_imgb, nn_score, true_label)
 
     output_list = list()
 
@@ -133,8 +163,9 @@ def save_predictions(predictions, dataset, output_dir, output_name):
         if 'info' in variant_meta.keys():
             variant_info = variant_meta['info'] + ';'
         else:
-            variant_info = '' #all supplementary information goes to the INFO field
+            variant_info = ''
         for key in ['vcf', 'BAM', 'DP', 'VAF', 'DP0', 'VAF0', 'refseq', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
+            #all supplementary information goes to the INFO field
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
         variant_info += f'nnc_score={score:.4}'
@@ -158,11 +189,9 @@ def save_predictions(predictions, dataset, output_dir, output_name):
     chrom_dict = {'X':23,'Y':24,'M':25,'MT':25,'chrX':23,'chrY':24,'chrM':25,'chrMT':25}
     output_df.sort_values(by=['#CHROM', 'POS'], key=lambda a:a.apply(lambda x:int(x) if type(x)==int or x.isnumeric() else chrom_dict.get(x,100)), inplace=True) #sort variants by chrom
 
-    #make sure that the path to the predictions vcf exists
-    #os.makedirs(os.path.dirname(output_name), exist_ok=True)
     output_name = os.path.join(output_dir, output_name)
 
-    #write vcf header
+    #first write vcf header
     with open(output_name, 'w') as f:
             f.write('##fileformat=VCFv4.2\n')
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
@@ -183,8 +212,6 @@ def save_predictions(predictions, dataset, output_dir, output_name):
     output_df.to_csv(output_name, mode='a', sep='\t', index=False) #append predictions to the vcf file
 
     print(f'Predictions saved in {output_name}')
-    #pd.DataFrame(predictions, columns=['imgb_path', 'imgb_index', 'score', 'label']).to_csv(output_name, index=False)
-
 
 def save_model_weights(model, optimizer, output_dir, epoch):
 

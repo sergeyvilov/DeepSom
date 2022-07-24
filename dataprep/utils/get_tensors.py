@@ -34,18 +34,30 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                replacement_csv :Optional[str] = None, #randomly replace mutational signatures by sampling variants from this file
              ):
     '''
-    Create a pileup tensor for each variant in the given VCF file.
+    Construct imgb batches based on variants in the input  vcf (tsv) file.
+
+    The header and all columns following the INFO column in the vcf file are ignored.
 
     For each variant a sample BAM file is required.
-    BAM file name can be encoded directly as a record BAM=bam_file_name.bam in the VCF INFO field (without the path).
-    Otherwise, it is inferred from the sample name in the VCF file using bam_matching_csv.
+    BAM file must be added as a record BAM=bam_file_name.bam in the VCF INFO field (without the folder path).
 
-    Tensors a packed in batches of size Lbatch.
-    Depending on the global simulate value the batches are saved to the disk.
-    To avoid file system issues, we distribute batches into subfolders in the output_dir.
+    All somatic variants in the vcf file should be labelled as "SOMATIC" in the INFO field.
 
-    To keep record of variants created, variant annotations (DP, VAF etc...) are added to the variants_df dataframe.
-    To speed up processing, they are first accumulated in variants_list and added to the variants_df only when 1000 variants are accumulated.
+    Each imgb batch consists of Lbatch variant tensors.
+    Depending on the simulate option the batches are saved to the disk.
+    To avoid file system issues, we distribute batches over several subfolders in the output_dir.
+
+    To keep record of variants created, we add variant annotations to the 'info' field of
+    each imgb batch. These annotations include original vcf file name (vcf),
+    variant record index in the vcf file (record_idx), chrom, pos, ref, alt, true_label,
+    batch name, index of the variant in batch (imgb_index), batch subfolder (subdir).
+    We also add variant allele fraction (VAF0), read depth (DP0) and the reference sequence
+    around the variant (refseq) that we obtain during tensor generation. The
+    INFO field from the original vcf is also kept.
+
+    Variant annotations are also added to the variants_df dataframe.
+    To speed up processing, they are first accumulated in variants_list and added to
+    the variants_df only when 1000 variants are accumulated.
 
     Tensor options (width, height etc...) are defined in the tensor_opts dictionary.
     See the variant_to_tensor function to learn more about tensor options.
@@ -77,11 +89,6 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     vcf_in['BAM'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
 
-    #vcf_in['Sample'] = vcf_in['info'].apply(lambda x: re.search('Sample=([^;]*)',x).groups(1)[0] if 'Sample=' in x else None)
-
-    #vcf_in['GERMLINE'] = vcf_in['info'].apply(lambda x: 1 if 'GERMLINE' in x else 0).astype(int)
-
-    #vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 0 if 'NON-SOMATIC' in x else 1 if 'SOMATIC' in x else None).astype(int)
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 1 if 'SOMATIC' in x else 0).astype(int)
 
     if shuffle_vcf:
