@@ -28,24 +28,25 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser("generate_tensors.py")
 
-parser.add_argument("--train_dataset",                                help = "Train dataset", type = str, default = None, required = False)
-parser.add_argument("--test_dataset",                                 help = "Dataset to evaluate on after the last epoch or perform inference", type = str, default = None, required = False)
+parser.add_argument("--train_dataset",                                help = "list of imgb batches used for training", type = str, default = None, required = False)
+parser.add_argument("--test_dataset",                                 help = "list of imgb batches for evaluation/inference", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
+parser.add_argument("--model_weight",                                 help = "initialization weight of the model", type = str, default = None, required = False)
+parser.add_argument("--optimizer_weight",                             help = "initialization weight of the optimizer, use only to resume training", type = str, default = None, required = False)
 parser.add_argument("--model_name",                                   help = "model name", type = str, default = 'ConvNN', required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
-parser.add_argument("--tensor_height",                                help = "tensor height", type = int, required = True)
-parser.add_argument("--max_depth",                                    help = "99th quantile of read depth", type = float, default = 150., required = False)
-parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation/evaluation", type = float, default = 0, required = False)
-parser.add_argument("--batch_size",                                   help = "batch size at one SGD iteration", type = int, default = 1, required = False)
+parser.add_argument("--tensor_height",                                help = "tensor height, all variants with larger read depth will be cropped", type = int, required = True)
+parser.add_argument("--max_depth",                                    help = "99th quantile of read depth  distribution", type = float, default = 150., required = False)
+parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation", type = float, default = 0, required = False)
+parser.add_argument("--batch_size",                                   help = "number of imgb batches combined in one SGD batch at each SGD iteration", type = int, default = 1, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
 parser.add_argument("--weight_decay",                                 help = "weight decay for optimizer", type = float, default = 0.1, required = False)
 parser.add_argument("--dropout",                                      help = "dropout in fully connected layers", type = float, default = 0.5, required = False)
 parser.add_argument("--tot_epochs",                                   help = "total number of training epochs", type = int, default = 20, required = False)
 parser.add_argument("--lr_sch_milestones",                            help = "epoch at which the learning rate should be reduced", type = int, default = 15, required = False)
 parser.add_argument("--lr_sch_gamma",                                 help = "learning rate reduction factor", type = float, default = 0.1, required = False)
-parser.add_argument("--save_each",                                    help = "when to save model/optimizer parameters, save_each=0 if saving is not needed, save_each=num_epochs for results to be saved only at the end", type = int, default = 0, required = False)
+parser.add_argument("--save_each",                                    help = "when to save model/optimizer weights, save_each=0 if saving is not needed, save_each=tot_epochs for results to be saved only at the end", type = int, default = 0, required = False)
 
 input_params = vars(parser.parse_args())
 
@@ -54,17 +55,18 @@ input_params = misc.dotdict(input_params)
 assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
-for param_name in ['train_dataset', 'test_dataset', '\\',
-'config_start_base', '\\',
+for param_name in ['output_dir', '\\',
+'train_dataset', 'test_dataset', '\\',
+'tensor_width', 'tensor_height', '\\',
+'max_depth', '\\',
 'val_fraction', '\\',
-'output_dir', '\\',
-'tensor_width','tensor_height', '\\',
-'max_depth','\\',
+'tot_epochs', 'save_each', '\\',
 'model_name', '\\',
+'model_weight', 'optimizer_weight', '\\',
 'seed', '\\',
-'batch_size', 'learning_rate','weight_decay', 'dropout', '\\',
-'tot_epochs', 'lr_sch_milestones', 'lr_sch_gamma', '\\',
-'save_each',  '\\']:
+'batch_size', 'learning_rate', 'weight_decay', 'dropout', '\\',
+'lr_sch_milestones', 'lr_sch_gamma', '\\']:
+
     if param_name == '\\':
         print()
     else:
@@ -106,7 +108,7 @@ assert train_on+valid_on+test_on>0, 'Insufficient number of instances for operat
 class TensorDataset(Dataset):
 
     '''
-    Dataset of SNP tensors
+    Dataset of variant tensors
     '''
 
     def __init__(self,
@@ -131,7 +133,7 @@ class TensorDataset(Dataset):
     def __getitem__(self, idx):
 
         '''
-        Retrieve a tensor
+        Retrieve a single imgb batch with variant tensors
 
         Input tensors are provided in imgb batches to reduce the time of disk I/O operations
 
@@ -276,20 +278,20 @@ optimizer = torch.optim.AdamW(model_params, lr=input_params.learning_rate, weigh
 
 last_epoch = 0
 
-if input_params.config_start_base:
+if input_params.model_weight:
 
     if torch.cuda.is_available():
         #load on gpu
-        model.load_state_dict(torch.load(input_params.config_start_base + '_model'))
-        if train_on:
-            optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer'))
+        model.load_state_dict(torch.load(input_params.model_weight))
+        if input_params.optimizer_weight:
+            optimizer.load_state_dict(torch.load(input_params.optimizer_weight))
     else:
         #load on cpu
-        model.load_state_dict(torch.load(input_params.config_start_base + '_model', map_location=torch.device('cpu')))
-        if train_on:
-            optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(input_params.model_weight, map_location=torch.device('cpu')))
+        if input_params.optimizer_weight:
+            optimizer.load_state_dict(torch.load(input_params.optimizer_weight, map_location=torch.device('cpu')))
 
-    last_epoch = int(input_params.config_start_base.split('_')[-2]) #infer previous epoch from input_params.config_start_base
+    last_epoch = int(input_params.model_weight.split('_')[-3]) #infer previous epoch from input_params.model_weight
 
 if train_on:
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
