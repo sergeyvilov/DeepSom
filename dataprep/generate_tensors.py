@@ -1,4 +1,3 @@
-
 # Construct variant tensors for each variant in a given VCF file.
 
 import os
@@ -7,8 +6,6 @@ import time
 import argparse
 
 import pandas as pd
-
-print(sys.version)
 
 sys.path.append('utils/')
 
@@ -43,7 +40,7 @@ parser.add_argument("--tensor_max_height",              help = "max tensor heigh
 parser.add_argument("--tensor_crop_strategy",           help = "how to crop tensor when Nreads>tensor_max_height", type = str, default = 'topbottom', required = False)
 parser.add_argument("--tensor_sort_by_variant",         help = "sort reads by base in the variant column", type = lambda x: bool(str2bool(x)), default = True, required = False)
 parser.add_argument("--tensor_check_variant",           help = "perform basic checks for snps/indels", default = 'vaf_only', required = False) #'snps', 'indels', 'vaf_only' or 'None'
-parser.add_argument("--replacement_csv",                help = "csv file with field chrom, pos, ref, alt if mutation signatures should be exchanged", type=str, default = None, required = False) #'snps', 'indels', 'vaf_only' or 'None'
+parser.add_argument("--replacement_csv",                help = "csv file with field chrom, pos, ref, alt when SNP mutation signatures are to be permuted", type=str, default = None, required = False) #'snps', 'indels', 'vaf_only' or 'None'
 
 
 input_params = vars(parser.parse_args())
@@ -67,16 +64,14 @@ for param,value in input_params.items():
         tensor_opts[param] = value
 
 if gen_params['chrom'] != None:
-    #if we are limited to a particular contig, put generated tensors in a dedicated folder
+    #if we are limited to a particular contig, put generated tensors in the corresponding folder
     gen_params['output_dir'] = os.path.join(gen_params['output_dir'], gen_params['chrom'])
 
 t0 = time.time()
 
 variants_df = get_tensors(tensor_opts = tensor_opts, simulate=SIMULATE, **gen_params) #dataframe with annotations of processed variants
 
-vcf_name = os.path.basename(input_params.vcf) #vcf base name
-
-variants_df['vcf'] = vcf_name
+variants_df['vcf'] = os.path.basename(input_params.vcf) #vcf base name
 
 variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv"), sep="\t", index=False)
 

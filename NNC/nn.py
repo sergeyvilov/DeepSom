@@ -28,22 +28,25 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser("generate_tensors.py")
 
-parser.add_argument("--train_dataset",                                help = "Train dataset", type = str, default = None, required = False)
-parser.add_argument("--test_dataset",                                 help = "Dataset to evaluate on after the last epoch or perform inference", type = str, default = None, required = False)
+parser.add_argument("--train_dataset",                                help = "list of imgb batches used for training", type = str, default = None, required = False)
+parser.add_argument("--test_dataset",                                 help = "list of imgb batches for evaluation/inference", type = str, default = None, required = False)
 parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
-parser.add_argument("--config_start_base",                            help = "config_start_base of the NN state to load, e.g. C:/checkpoints/epoch_20_weights", type = str, default = None, required = False)
+parser.add_argument("--model_weight",                                 help = "initialization weight of the model", type = str, default = None, required = False)
+parser.add_argument("--optimizer_weight",                             help = "initialization weight of the optimizer, use only to resume training", type = str, default = None, required = False)
+parser.add_argument("--model_name",                                   help = "model name", type = str, default = 'ConvNN', required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
-parser.add_argument("--tensor_height",                                help = "tensor height", type = int, required = True)
-parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation/evaluation", type = float, default = 0, required = False)
-parser.add_argument("--batch_size",                                   help = "batch size at one SGD iteration", type = int, default = 1, required = False)
+parser.add_argument("--tensor_height",                                help = "tensor height, all variants with larger read depth will be cropped", type = int, required = True)
+parser.add_argument("--max_depth",                                    help = "99th quantile of read depth  distribution", type = float, default = 150., required = False)
+parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation", type = float, default = 0, required = False)
+parser.add_argument("--batch_size",                                   help = "number of imgb batches combined in one SGD batch at each SGD iteration", type = int, default = 1, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
 parser.add_argument("--weight_decay",                                 help = "weight decay for optimizer", type = float, default = 0.1, required = False)
 parser.add_argument("--dropout",                                      help = "dropout in fully connected layers", type = float, default = 0.5, required = False)
 parser.add_argument("--tot_epochs",                                   help = "total number of training epochs", type = int, default = 20, required = False)
 parser.add_argument("--lr_sch_milestones",                            help = "epoch at which the learning rate should be reduced", type = int, default = 15, required = False)
 parser.add_argument("--lr_sch_gamma",                                 help = "learning rate reduction factor", type = float, default = 0.1, required = False)
-parser.add_argument("--save_each",                                    help = "when to save model/optimizer parameters, save_each=0 if saving is not needed, save_each=num_epochs for results to be saved only at the end", type = int, default = 0, required = False)
+parser.add_argument("--save_each",                                    help = "when to save model/optimizer weights, save_each=0 if saving is not needed, save_each=tot_epochs for results to be saved only at the end", type = int, default = 0, required = False)
 
 input_params = vars(parser.parse_args())
 
@@ -52,15 +55,18 @@ input_params = misc.dotdict(input_params)
 assert input_params.tensor_width>24, 'Minimal tensor width is 24'
 assert input_params.tensor_height>10, 'Minimal tensor height is 10'
 
-for param_name in ['train_dataset', 'test_dataset', '\\',
-'config_start_base', '\\',
-'seed', '\\',
+for param_name in ['output_dir', '\\',
+'train_dataset', 'test_dataset', '\\',
+'tensor_width', 'tensor_height', '\\',
+'max_depth', '\\',
 'val_fraction', '\\',
-'output_dir', '\\',
-'tensor_width','tensor_height', '\\',
-'batch_size', 'learning_rate','weight_decay', 'dropout', '\\',
-'tot_epochs', 'lr_sch_milestones', 'lr_sch_gamma', '\\',
-'save_each',  '\\']:
+'tot_epochs', 'save_each', '\\',
+'model_name', '\\',
+'model_weight', 'optimizer_weight', '\\',
+'seed', '\\',
+'batch_size', 'learning_rate', 'weight_decay', 'dropout', '\\',
+'lr_sch_milestones', 'lr_sch_gamma', '\\']:
+
     if param_name == '\\':
         print()
     else:
@@ -75,11 +81,11 @@ train_on, valid_on, test_on = 0, 0, 0 #will be set to 1 if the corresponding ope
 
 if input_params.train_dataset:
 
-    train_valid_images = pd.read_csv(input_params.train_dataset, header=None).squeeze()
+    train_valid_images = pd.read_csv(input_params.train_dataset, header=None).squeeze() #full path to imgb batches
 
-    train_valid_images = train_valid_images.sample(frac=1., random_state=1).tolist()
+    train_valid_images = train_valid_images.sample(frac=1., random_state=1).tolist() #shuffle
 
-    N_valid = int(input_params.val_fraction*len(train_valid_images))
+    N_valid = int(input_params.val_fraction*len(train_valid_images)) #numebr of validation instances
 
     valid_images, train_images = train_valid_images[:N_valid], train_valid_images[N_valid:]
 
@@ -91,7 +97,7 @@ if input_params.train_dataset:
 
 if input_params.test_dataset:
 
-    test_images = pd.read_csv(input_params.test_dataset, header=None).squeeze().tolist()
+    test_images = pd.read_csv(input_params.test_dataset, header=None).squeeze().tolist() #full path to imgb batches
 
     print(f'Test/Inference instances: {len(test_images)}')
 
@@ -102,19 +108,23 @@ assert train_on+valid_on+test_on>0, 'Insufficient number of instances for operat
 class TensorDataset(Dataset):
 
     '''
-    Dataset of SNP tensors
+    Dataset of variant tensors
     '''
 
     def __init__(self,
                  data,           #full path to imgb batches with corresponding labels
                  target_height,  #target tensor height for the neural network
                  target_width,   #target tensor width for the neural network
+                 max_depth,      #constant for normalizing read depth
                 ):
 
         self.data = data
         self.target_height = target_height
         self.target_width = target_width
+        self.max_depth = max_depth
+
         self.variant_meta = [[] for idx in range(len(self.data))]
+        self.variant_misc_data = [[] for idx in range(len(self.data))]
 
     def __len__(self):
 
@@ -123,7 +133,7 @@ class TensorDataset(Dataset):
     def __getitem__(self, idx):
 
         '''
-        Retrieve a tensor
+        Retrieve a single imgb batch with variant tensors
 
         Input tensors are provided in imgb batches to reduce the time of disk I/O operations
 
@@ -141,8 +151,6 @@ class TensorDataset(Dataset):
 
         imgb_path = self.data[idx] #retrieve imgb batch
 
-        #imgb_path='/storage/groups/epigenereg01/workspace/projects/vale/datasets/snvs/BLCA-US/gnomAD_thr_0/images2/73000/0/73000_968.imgb'
-
         p_hot_correction_factor = 1e-4 #for p-hot reads encoded as ushort in variant_to_tensor function
 
         #load imgb batch of tensors
@@ -154,6 +162,7 @@ class TensorDataset(Dataset):
 
         if len(self.variant_meta[idx]) == 0:
             self.variant_meta[idx] = tensors['info'] #extract meta information about the variants in the batch: chrom, pos, ref, alt, vcf name
+            self.variant_misc_data[idx] = misc.get_misc_tensor_data(self.variant_meta[idx], self.max_depth) #extract information added explicitly to fully connected layers (flanking regions)
 
         full_tensors = [] #tensors of right dimensions (self.target_height, self.target_width)
 
@@ -204,7 +213,10 @@ class TensorDataset(Dataset):
         labels = [info["true_label"] for info in tensors['info']]
 
         tensors_dataset_idx = [(idx,x) for x in range(N_tensors)] # position of each tensor in the dataset (idx_of_imgb_batch, pos_in_imgb_batch), to keep track of each individual tensor
-        return full_tensors, labels, tensors_dataset_idx
+
+        misc_data = self.variant_misc_data[idx] #information to be added to fully connected layers
+
+        return full_tensors, labels, misc_data, tensors_dataset_idx
 
 def collate_fn(data):
     '''
@@ -223,19 +235,19 @@ def collate_fn(data):
 
 if train_on:
 
-    train_dataset = TensorDataset(train_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+    train_dataset = TensorDataset(train_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
     train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 if valid_on:
 
-    valid_dataset = TensorDataset(valid_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+    valid_dataset = TensorDataset(valid_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
     valid_dataloader = DataLoader(valid_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 if test_on:
 
-    test_dataset = TensorDataset(test_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width)
+    test_dataset = TensorDataset(test_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
     test_dataloader = DataLoader(test_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
@@ -248,7 +260,10 @@ else:
     print('\nCUDA device: CPU\n')
 
 
-model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
+if input_params.model_name=='ConvNN':
+    model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
+elif input_params.model_name=='ConvNN_flanking':
+    model = models.ConvNN_flanking(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
 
 model = model.to(device) #model to CUDA
 
@@ -263,20 +278,20 @@ optimizer = torch.optim.AdamW(model_params, lr=input_params.learning_rate, weigh
 
 last_epoch = 0
 
-if input_params.config_start_base:
+if input_params.model_weight:
 
     if torch.cuda.is_available():
         #load on gpu
-        model.load_state_dict(torch.load(input_params.config_start_base + '_model'))
-        if train_on:
-            optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer'))
+        model.load_state_dict(torch.load(input_params.model_weight))
+        if input_params.optimizer_weight:
+            optimizer.load_state_dict(torch.load(input_params.optimizer_weight))
     else:
         #load on cpu
-        model.load_state_dict(torch.load(input_params.config_start_base + '_model', map_location=torch.device('cpu')))
-        if train_on:
-            optimizer.load_state_dict(torch.load(input_params.config_start_base + '_optimizer', map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(input_params.model_weight, map_location=torch.device('cpu')))
+        if input_params.optimizer_weight:
+            optimizer.load_state_dict(torch.load(input_params.optimizer_weight, map_location=torch.device('cpu')))
 
-    last_epoch = int(input_params.config_start_base.split('_')[-2]) #infer previous epoch from input_params.config_start_base
+    last_epoch = int(input_params.model_weight.split('_')[-3]) #infer previous epoch from input_params.model_weight
 
 if train_on:
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
@@ -288,8 +303,7 @@ if train_on:
 predictions_dir = os.path.join(input_params.output_dir, 'predictions') #dir to save predictions
 weights_dir = os.path.join(input_params.output_dir, 'weights') #dir to save model weights every save_each epoch
 
-if valid_on or test_on:
-    os.makedirs(predictions_dir, exist_ok = True)
+os.makedirs(predictions_dir, exist_ok = True)
 
 if input_params.save_each:
     os.makedirs(weights_dir, exist_ok = True)
@@ -318,11 +332,11 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         print(f'EPOCH: {epoch} - train loss: {train_loss:.4}, train ROC AUC: {train_ROC_AUC:.4}')
 
-        if input_params.save_each!=0 and epoch%input_params.save_each==0: #save model weights
+        if input_params.save_each!=0 and (epoch%input_params.save_each==0 or epoch==tot_epochs): #save model weights
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
-            misc.save_predictions(train_pred, train_dataset, predictions_dir, f'training_epoch_{epoch}.vcf') #save evaluation predictions on disk
+            misc.save_predictions(train_pred, train_dataset, predictions_dir, f'training_epoch_{epoch}.vcf') #save train predictions on disk
 
     if valid_on:
 
@@ -334,7 +348,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
-        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, f'validation_epoch_{epoch}.vcf') #save evaluation predictions on disk
+        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, f'validation_epoch_{epoch}.vcf') #save validation predictions on disk
 
     if test_on and epoch==tot_epochs:
 
@@ -348,16 +362,16 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         _, _, labels = zip(*test_pred)
 
-        if not None in labels:
+        if not None in labels: #if that's a test dataset
 
             test_ROC_AUC, _ = misc.get_ROC(test_pred)
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
-        misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save evaluation predictions on disk
+        misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save test/inference predictions on disk
 
 
-print(f'Peak memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
-print(f'Total train time: {round(tot_train_time)} s ({len(train_pred)*(tot_epochs-last_epoch)/(tot_train_time+1):.3f} samples/s)')
-print(f'Test/inference time: {round(tot_test_time)} s ({len(test_pred)/(tot_test_time+1):.3f} samples/s)')
+print(f'peak memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
+print(f'total train time: {round(tot_train_time)} s : {round(len(train_pred)*(tot_epochs-last_epoch)/(tot_train_time+1))} samples/s')
+print(f'total inference time: {round(tot_test_time)} s : {round(len(test_pred)/(tot_test_time+1))} samples/s')
 print('Done')

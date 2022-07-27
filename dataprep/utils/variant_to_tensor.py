@@ -124,7 +124,7 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
                             ):
 
     '''
-    Collect reads for a given variant and transform them to a variant image
+    Collect reads for a given variant and transform them to a variant tensor.
 
     When reading the BAM file, consider only first MAX_RAW_READS reads.
     Discard reads with at least one flag from EXCLUDE_FLAGS.
@@ -342,18 +342,13 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
 
         ref_bases = ref_bases.upper() #ignore strand information
 
-        #ref_bases = np.array(list(ref_bases))
-
         if variant_is_insertion: #insert deletions in the reference sequence if variant is an insertion
-            #ref_bases = np.insert(ref_bases[:-max_ins_length_at_variant], variant_column_idx+1, (['*']*max_ins_length_at_variant))
             ref_bases = ref_bases[:variant_column_idx+1]+'*'*max_ins_length_at_variant+ref_bases[variant_column_idx+1:-max_ins_length_at_variant]
 
         L_ref = len(variant['ref'])
 
         if ref_bases[variant_column_idx:variant_column_idx+L_ref]!=variant['ref']:
             raise Exception(f'Variant reference allele not found in the right position in the reference bases string: {ref_bases} {variant_column_idx} {variant["refpos"]-variant_column_idx}!')
-
-        #print('Reference sequence: ' + ''.join(ref_bases))
 
         ref_bases = np.array(encode_bases(ref_bases)) # letters to digits
 
@@ -422,12 +417,12 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
     p_hot_reads[del_row, del_col, :] = 0.
 
     M_row, M_col = np.where(reads_im[:,:,0]==encode_bases('M')) #M: either A or C, each with probability 0.5
-    p_hot_reads[M_row, M_col, 0] = 1.
-    p_hot_reads[M_row, M_col, 1] = 1.
+    p_hot_reads[M_row, M_col, 0] = 0.5
+    p_hot_reads[M_row, M_col, 1] = 0.5
 
     K_row, K_col = np.where(reads_im[:,:,0]==encode_bases('K')) #K: either G or T, each with probability 0.5
-    p_hot_reads[K_row, K_col, 2] = 1.
-    p_hot_reads[K_row, K_col, 3] = 1.
+    p_hot_reads[K_row, K_col, 2] = 0.5
+    p_hot_reads[K_row, K_col, 3] = 0.5
 
     one_hot_ref = np.zeros((1,tensor_width,4)) #one-hot encoding of reference bases, same for all reads
 
@@ -455,10 +450,6 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
     tensor = {'one_hot_ref':one_hot_ref.astype(bool),
              'p_hot_reads':(p_hot_reads*1e4).astype(np.ushort),
             'flags_reads':flags_reads.astype(bool)}
-
-    #if vartype!='snp':
-    #    tensor.update({'indels_chn':indels_chn.astype(bool)})
-
 
     ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-30:variant_column_idx+31]) # reference sequence around the variant
 

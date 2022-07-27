@@ -19,14 +19,16 @@ def model_train(model, optimizer, dataloader, device):
 
     all_predictions = []
 
-    for itr_idx, (tensors, labels, tensors_dataset_idx) in enumerate(dataloader):
+    for itr_idx, (tensors, labels, misc_data, tensors_dataset_idx) in enumerate(dataloader):
 
         #if itr_idx==10:
         #    break
         tensors = torch.tensor(tensors, dtype=torch.float).to(device)
         labels = torch.tensor(labels, dtype=torch.float).to(device)
 
-        outputs = model(tensors)
+        misc_data = torch.tensor(misc_data, dtype=torch.float).to(device)
+
+        outputs = model((tensors, misc_data))
 
         loss = criterion(outputs, labels)
 
@@ -65,13 +67,15 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
     with torch.no_grad():
 
-        for itr_idx, (tensors, labels, tensors_dataset_idx) in enumerate(dataloader):
+        for itr_idx, (tensors, labels, misc_data, tensors_dataset_idx) in enumerate(dataloader):
 
             #if itr_idx==10:
             #    break
             tensors = torch.tensor(tensors, dtype=torch.float).to(device)
 
-            outputs = model(tensors)
+            misc_data = torch.tensor(misc_data, dtype=torch.float).to(device)
+
+            outputs = model((tensors, misc_data))
 
             if not None in labels:
 
