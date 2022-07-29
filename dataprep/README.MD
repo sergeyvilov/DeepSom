@@ -15,7 +15,7 @@ conda env create -f environment.yml
 conda activate dataprep
 ```
 
-##Data preprocessing in inference mode
+## Data preprocessing in inference mode
 
 We shall first describe how to prepare tensors for inference on a single WGS sample.
 In inference mode, we don't know true variant labels (somatic/non-somatic) and use the NNC to classify the variants.
@@ -36,7 +36,7 @@ In the following, we will discuss tensor preparation for one VCF file, let it be
 This step can be skipped if variant pre-filtering is not required and the flanking regions feature is
 not going to be used for classification.
 
-For each called variant, we add information about the population allele frequency in the gnomAD database. A single VCF file can be annotated using the following command:
+For each called variant, we add information about the population allele frequency in the [gnomAD](https://gnomad.broadinstitute.org/) database. A single VCF file can be annotated using the following command:
 
 ```
 annotation_file=gnomAD_dir/gnomAD_light.vcf.gz #path to lightweight gnomAD VCF
@@ -74,9 +74,9 @@ python get_flanking.py wgs_sample_name.gnomAD.vcf.gz $min_germline_gnomAD_AF $fl
 flanking_params="(flanking_variants=2+2, min_germline_gnomAD_AF={params.min_germline_gnomAD_AF}, flanking_region_length={params.flanking_region_length})"
 
 bcftools view -h wgs_sample_name.gnomAD.vcf.gz \
-|sed -E '10i ##INFO=<ID=flanking,Number=.,Type=String,Description=\"Flanking regions: left VAF|left DP|right VAF|right DP '"$flanking_params"'\">' > wgs_sample_name.flanking.vcf
+| sed -E '10i ##INFO=<ID=flanking,Number=.,Type=String,Description=\"Flanking regions: left VAF|left DP|right VAF|right DP '"$flanking_params"'\">' > wgs_sample_name.flanking.vcf
 
-bcftools view -H wgs_sample_name.gnomAD.vcf.gz |paste - wgs_sample_name.flanking | awk 'BEGIN {OFS="\t"} {$8=$8";flanking="$NF; $NF=""; print $0}' >> wgs_sample_name.flanking.vcf
+bcftools view -H wgs_sample_name.gnomAD.vcf.gz | paste - wgs_sample_name.flanking | awk 'BEGIN {OFS="\t"} {$8=$8";flanking="$NF; $NF=""; print $0}' >> wgs_sample_name.flanking.vcf
 
 bgzip wgs_sample_name.flanking.vcf
 ```
@@ -99,9 +99,9 @@ name of the corresponding BAM file:
 bam_file_name=sample_XYZ.bam #BAM file corresponding to this VCF file, use only basename
 
 bcftools view -h wgs_sample_name.filtered.vcf.gz \
-|sed -E '10i ##INFO=<ID=BAM,Number=.,Type=String,Description=\"BAM sample name\">' > wgs_sample_name.bam.vcf
+| sed -E '10i ##INFO=<ID=BAM,Number=.,Type=String,Description=\"BAM sample name\">' > wgs_sample_name.bam.vcf
 
-bcftools view -H wgs_sample_name.filtered.vcf.gz |awk -v bam_file_name=$bam_file_name 'BEGIN {OFS="\t"} {$8=$8";BAM="bam_file_name; print $0}' >> wgs_sample_name.bam.vcf
+bcftools view -H wgs_sample_name.filtered.vcf.gz | awk -v bam_file_name=$bam_file_name 'BEGIN {OFS="\t"} {$8=$8";BAM="bam_file_name; print $0}' >> wgs_sample_name.bam.vcf
 
 bgzip wgs_sample_name.bam.vcf
 ```
@@ -111,7 +111,7 @@ Use only the BAM basename, without the full path.
 As soon as the BAM name is added to the INFO field, VCF files from several samples can be concatenated. All concatenated VCF files must have the same sample name in the header. To change the sample name in the header, use the following commands:
 
 ```
-bcftools view wgs_sample_name.bam.vcf.gz |sed '/#CHROM/ s/FORMAT\t.*/FORMAT\tSAMPLE/'| bgzip -c > wgs_sample_name.unified_sample.vcf.gz
+bcftools view wgs_sample_name.bam.vcf.gz | sed '/#CHROM/ s/FORMAT\t.*/FORMAT\tSAMPLE/' | bgzip -c > wgs_sample_name.unified_sample.vcf.gz
 
 tabix wgs_sample_name.unified_sample.vcf.gz
 ```
@@ -151,6 +151,8 @@ python generate_tensors.py \
 
 `--tensor_height` --- maximal height of the variant tensor. Variant tensors with more reads will be cropped.
 
+The VCF header is actually ignored by `generate_tensors.py`, so it does not need to be preserved
+
 7. When imgb batches are generated, descend to the `output_dir` and make a list of all batches:
 
 ```
@@ -158,12 +160,12 @@ find ~+  -name '*.imgb' > wgs_sample_name_imgb.lst
 ```
 This list is to be passed to the NNC using the `--test_dataset` option.
 
-##Data preprocessing in test(evaluation) mode
+## Data preprocessing in test(evaluation) mode
 
 In test mode, we use variants with known labels (somatic/non-somatic) to evaluate the NNC performance.
 
 Somatic variants should be labelled with tag SOMATIC in the INFO field of the VCF file. Non-somatic variants
-do not need to be labelled.
+do not need to be labelled. We labelled several random variants in file `example.unified_sample.vcf` as somatic to demonstrate how the tag SOMATIC should be added.
 
 Data preparation in test mode includes all steps of data preparation in inference mode.
 
@@ -174,7 +176,7 @@ To call somatic variants and label them in the VCF file, run Mutect2 again using
 
 Note that WGS samples used for evaluation must not be used for training.
 
-##Data preprocessing in train mode.
+## Data preprocessing in train mode.
 
 For training the NNC one needs around 120 000 SNPs (50% somatic,50% non-somatic) and
 20 000 INDELs (50% somatic,50% non-somatic).
@@ -192,13 +194,14 @@ So, to prepare train data, we need the following:
 that for a successfull concatenation the VCF files should have the same sample name.
 
 3. Randomly choose the required number of somatic and non-somatic SNP and INDEL variants from `train.vcf.gz`.
-Upsample when necessary. See example commands in the script `make_train_set.sh`.
+Upsample when necessary. See example commands in the script `make_train_set.sh`, which generates `train.selected.tsv` required
+in the next step.
 
 4. Generate imgb tensor batches:
 
 ```
 python generate_tensors.py \
---vcf './train/train_dataset_name/vcf/train_variants.vcf.gz' \
+--vcf './train/train_dataset_name/vcf/train.selected.tsv' \
 --output_dir './train/train_dataset_name/tensors/' \
 --bam_dir './bam/project_name/' \
 --refgen_fa './ref/GRCh37.fa' \

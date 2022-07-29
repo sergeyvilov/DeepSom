@@ -2,7 +2,6 @@
 # coding: utf-8
 
 import numpy as np
-import pysam
 import re
 import os
 
@@ -114,7 +113,7 @@ def compute_VAF_DP(reads, variant, vartype, varlen, ins_at_variant):
         return N_alts/N_ref, N_ref, is_alt #VAF, DP, is ALT in read
 
 
-def variant_to_tensor(variant, ref_fasta_file, bam_file,
+def variant_to_tensor(variant, bam_file, ref_file,
                             tensor_width = 150, # tensor width: 2x the most probable read length
                             tensor_max_height = 70, #max tensor height, the probability to have a read depth above this value should be small
                             tensor_sort_by_variant = False, #sort reads by value in the variant column
@@ -160,15 +159,11 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
         vartype='snp'
         varlen=1
 
-    if not os.path.isfile(bam_file):
-        raise Exception('BAM file not found')
-
-    samfile = pysam.AlignmentFile(bam_file, "rb" ) #open the variant BAM file
 
     raw_reads = []
 
     #collect all the reads around the candidate variant position
-    for read in samfile.fetch(variant['chrom'], variant['pos']-2, variant['pos']+2):
+    for read in bam_file.fetch(variant['chrom'], variant['pos']-2, variant['pos']+2):
         if (read.flag&EXCLUDE_FLAGS==0 and read.pos<=variant['pos']-1 and read.reference_end>variant['pos']):
                 raw_reads.append((read.pos,read.seq,read.qual,read.flag,read.cigartuples))
         if len(raw_reads)>=MAX_RAW_READS:#sometimes there are a lot of reads, we don't need all of them
@@ -336,9 +331,8 @@ def variant_to_tensor(variant, ref_fasta_file, bam_file,
         '''
         Get reference sequence around the variant positon, variant being roughly in the center
         '''
-        reffile = pysam.FastaFile(ref_fasta_file) #open reference genome FASTA
 
-        ref_bases = reffile.fetch(variant['chrom'], variant['refpos']-variant_column_idx-1, variant['refpos']-variant_column_idx+tensor_width-1) #reference bases around the variant position
+        ref_bases = ref_file.fetch(variant['chrom'], variant['refpos']-variant_column_idx-1, variant['refpos']-variant_column_idx+tensor_width-1) #reference bases around the variant position
 
         ref_bases = ref_bases.upper() #ignore strand information
 

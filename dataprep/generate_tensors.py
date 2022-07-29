@@ -27,14 +27,9 @@ class dotdict(dict):
 
 parser.add_argument("--vcf",                            help = "vcf or tsv file with variants", type = str, required = True)
 parser.add_argument("--output_dir",                     help = "output dir name", type = str, required = True)
-parser.add_argument("--chrom",                          help = "limit variants to a given chromosome", type = str, default = None, required = False)
-parser.add_argument("--chrom_start",                    help = "start position in the chromosome", type = int, default = None, required = False)
-parser.add_argument("--chrom_stop",                     help = "stop position in the chromosome", type = int, default = None, required = False)
 parser.add_argument("--bam_dir",                        help = "folder with bam files", type = str, required = True)
 parser.add_argument("--refgen_fa",                      help = "reference genome FASTA file", type = str, required = True)
 parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 32, required = False)
-parser.add_argument("--shuffle_vcf",                    help = "shuffle rows in the input vcf", type = lambda x: bool(str2bool(x)), default = False, required = False)
-parser.add_argument("--max_variants",                   help = "maximal number of variants from the VCF file to process", type = int, default = None, required = False)
 parser.add_argument("--tensor_width",                   help = "tensor width", type = int, default = 150, required = False)
 parser.add_argument("--tensor_max_height",              help = "max tensor height", type = int, default = 70, required = False)
 parser.add_argument("--tensor_crop_strategy",           help = "how to crop tensor when Nreads>tensor_max_height", type = str, default = 'topbottom', required = False)
@@ -62,10 +57,6 @@ for param,value in input_params.items():
         gen_params[param] = value
     else:
         tensor_opts[param] = value
-
-if gen_params['chrom'] != None:
-    #if we are limited to a particular contig, put generated tensors in the corresponding folder
-    gen_params['output_dir'] = os.path.join(gen_params['output_dir'], gen_params['chrom'])
 
 t0 = time.time()
 

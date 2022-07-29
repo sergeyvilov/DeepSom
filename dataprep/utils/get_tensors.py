@@ -2,6 +2,8 @@ import pickle
 import os
 from typing import *
 import re
+import pysam
+import random
 
 import pandas as pd
 
@@ -9,15 +11,14 @@ import pandas as pd
 
 from variant_to_tensor import variant_to_tensor #function to form a tensor out of a variant
 
-def dump_batch(batch, info, batch_path, simulate=False):
+def dump_batch(batch_tensors, batch_info, output_dir, batch_name, simulate=False):
     '''
     Write a batch of tensors on the disk
     '''
-    #print(batch_path)
-
     if not simulate:
-        with open(batch_path, 'wb') as f:
-            pickle.dump({'images':batch, 'info':info},f)
+        os.makedirs(output_dir, exist_ok = True)
+        with open(os.path.join(output_dir, batch_name), 'wb') as f:
+            pickle.dump({'images':batch_tensors, 'info':batch_info}, f)
 
 def get_tensors(vcf :str,                             #full path to a VCF file with the variants
                bam_dir: str,                          #directory with corresponding BAM files
@@ -25,11 +26,6 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
                refgen_fa :str,                        #reference genome FASTA file
                tensor_opts :Dict,                     #options for variant tensor encoding
                Lbatch :Optional[int] = 1,             #how many tensors put in each batch
-               shuffle_vcf :Optional[bool] = False,   #shuffle rows in the vcf before making imgb batches
-               chrom :Optional[str] = None,           #chromosome name
-               chrom_start :Optional[int] = None,     #start position in the chromosome
-               chrom_stop :Optional[int] = None,      #stop position in the chromosome
-               max_variants :Optional[int] = None,    #stop when this number of variants is reached
                simulate :Optional[bool] = False,      #simulate workflow, don't dump tensors
                replacement_csv :Optional[str] = None, #randomly replace mutational signatures by sampling variants from this file
              ):
@@ -63,163 +59,147 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     See the variant_to_tensor function to learn more about tensor options.
     '''
 
-    tensors_per_subdir = 100*Lbatch #maximum tensors per subdir
+    BLOCK_LENGTH = 1000
 
-    variants_df = pd.DataFrame(columns=["vcf", "record_idx", "chrom", "pos", "ref", "alt", "VAF0", "DP0", "tensor_height", "batch_name", "imgb_index", "subdir"]) # DataFrame for variant annotations
-
-    if not simulate:
-        os.makedirs(output_dir, exist_ok=True)
-
-    #vcf_in = pysam.VariantFile(vcf) #open the VCF file
+    variants_df = pd.DataFrame(columns=["vcf", "record_idx", "chrom", "pos", "ref", "alt", "VAF0", "DP0", "tensor_height", "batch_name", "imgb_index", "subdir", "remarks"]) # DataFrame for variant annotations
 
     vcf_basename = os.path.basename(vcf) #name w/o path
     vcf_short_name = re.sub('(\.vcf|\.tsv)(\.gz){0,1}$','', vcf_basename) #remove extension
-
-    #all_samples = list(vcf_in.header.samples) #extract BAM sample names from the VCF header
-
-    variants_batch = [] #current batch of tensors
-
-    variants_list = []  #we will first accumulate variant annotations in a list and then add this list to the data frame
-
-    N_variants_added = 0 #total number of variants added
 
     #iterate over the records of the vcf file
 
     vcf_in = pd.read_csv(vcf, comment='#', sep='\t', names=['chrom', 'pos', 'id', 'ref', 'alt', 'qual', 'filter', 'info'], dtype={'chrom':str}, usecols = [i for i in range(8)])
 
-    vcf_in['BAM'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
+    vcf_in['bam'] = vcf_in['info'].apply(lambda x: re.search('BAM=([^;]*)',x).groups(1)[0] if 'BAM=' in x else None)
+
+    for bam_file_name in vcf_in.bam.drop_duplicates():
+
+            bam_path = os.path.join(bam_dir, bam_file_name)
+
+            if not os.path.isfile(bam_path):
+                raise Exception('BAM file not found: ', bam_path)
 
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 1 if 'SOMATIC' in x else 0).astype(int)
 
-    if shuffle_vcf:
-        vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
+    vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
 
     if replacement_csv:
         replacement_df = pd.read_csv(replacement_csv, names=['chrom', 'refpos', 'ref', 'alt'], dtype={'chrom':str, 'refpos':int})
 
     #vcf_in['vartype'] = vcf_in[['ref','alt']].apply(lambda x: 'SNP' if  len(x.ref)==len(x.alt) else 'INDEL', axis=1)
 
-    for record_idx, rec in vcf_in.iterrows():
+    total_batches = 0
 
-        if (chrom_start!=None and rec.pos<chrom_start) or (chrom_stop!=None and rec.pos>chrom_stop):
-            continue
+    ref_file = pysam.FastaFile(refgen_fa) #open reference genome FASTA
 
-        if record_idx%tensors_per_subdir==0:
-            #switch to a new subdir if the current one already has enough batches
-            batch_subdir = str(record_idx//tensors_per_subdir)
-            os.makedirs(os.path.join(output_dir, batch_subdir), exist_ok = True)
+    random.seed(1)
 
-        if max_variants and N_variants_added >= max_variants:
-            break
+    for block_start in range(0, len(vcf_in), BLOCK_LENGTH):
 
-        variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alt,
-            'true_label':rec.true_label}
+        block_variants = []
 
-        if 'POS_Build36' in rec.info:
-             variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec.info).groups(1)[0])
+        block_end = min(block_start + BLOCK_LENGTH, len(vcf_in))
 
-        if replacement_csv:
+        block_vcf = vcf_in.iloc[block_start:block_end]
 
-            chrom, refpos, ref, alt = replacement_df.sample(n=1).values[0]
+        for bam_file_name in block_vcf.bam.drop_duplicates():
 
-            replacement_variant = {'chrom':chrom, 'refpos':refpos, 'ref':ref, 'alt':alt}
+            bam_path = os.path.join(bam_dir, bam_file_name)
 
-        else:
+            bam_file = pysam.AlignmentFile(bam_path, "rb" ) #open the BAM file
 
-            replacement_variant = None
+            for record_idx, rec in block_vcf[block_vcf.bam==bam_file_name].iterrows():
 
-        #
-        # variant_annotations = {}
-        #
-        # for ann_name in ['GERMLINE']:
-        #     if ann_name in rec.info.keys():
-        #         variant_annotations[ann_name] = rec.info.get(ann_name)
-        #     else:
-        #         variant_annotations[ann_name] = None
-        #
-        # variant.update(variant_annotations)
+                variant = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alt,
+                'true_label':rec.true_label, 'info': rec['info'].rstrip(';'), 'vcf': vcf_basename, 'record_idx':record_idx}
 
-        bam_file_name = rec.BAM# +'.bam'
+                if 'POS_Build36' in rec['info']:
+                    variant['pos'] = int(re.search('POS_Build36=([^;]*)',rec['info']).groups(1)[0])
 
-        bam_path = os.path.join(bam_dir, bam_file_name) #full path to the BAM file
+                if replacement_csv:
 
-        try:
+                    chrom, refpos, ref, alt = replacement_df.sample(n=1).values[0]
+                    replacement_variant = {'chrom':chrom, 'refpos':refpos, 'ref':ref, 'alt':alt}
 
-            #get a tensor variant tensor for the current variant
-            variant_tensor, ref_support, VAF, DP = variant_to_tensor(variant, refgen_fa, bam_path, replacement_variant=replacement_variant,
-                 **tensor_opts) #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
+                else:
 
-        except Exception as exc:
+                    replacement_variant = None
 
-           print('-------------------------------------------------')
-           print('Exception occured while creating a variant tensor')
-           print('Variant:\n', variant)
-           print('Reference FASTA file:\n', refgen_fa)
-           print('BAM file:\n', bam_path)
-           print('Error message:\n', exc)
+                #
+                # variant_annotations = {}
+                #
+                # for ann_name in ['GERMLINE']:
+                #     if ann_name in rec.info.keys():
+                #         variant_annotations[ann_name] = rec.info.get(ann_name)
+                #     else:
+                #         variant_annotations[ann_name] = None
+                #
+                # variant.update(variant_annotations)
 
-           continue
+                try:
 
-        variants_batch.append(variant_tensor) #add current variant to the batch
+                    #get a tensor variant tensor for the current variant
+                    variant_tensor, ref_support, VAF0, DP0 = variant_to_tensor(variant, bam_file, ref_file, replacement_variant=replacement_variant,
+                         **tensor_opts) #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
 
-        tensor_height = variant_tensor['p_hot_reads'].shape[0] #tensor height after cropping (can be smaller than DP)
+                    tensor_height = variant_tensor['p_hot_reads'].shape[0] #tensor height after cropping (can be smaller than DP)
 
-        variant_record = {
-             'info': rec['info'].rstrip(';'),
-             'vcf': vcf_basename,
-             'record_idx':record_idx,
-             'subdir': batch_subdir,
-             'VAF0': round(VAF,2),
-             'DP0': DP,
-             'refseq': ref_support,
-             'tensor_height':tensor_height,
-            }
+                    variant.update({'VAF0': round(VAF0,2), 'DP0': DP0, 'refseq': ref_support,'tensor_height': tensor_height, 'remarks': 'success'})
 
-        variant_record.update(variant)
+                except Exception as error_msg:
 
-        for key in ('chrom', 'refpos', 'ref', 'alt'):
-            variant_record['replaced_' + key] = replacement_variant[key] if replacement_variant else None
+                   print('-------------------------------------------------')
+                   print('Exception occured while creating a variant tensor')
+                   print('Variant:\n', variant)
+                   print('Reference FASTA file:\n', refgen_fa)
+                   print('BAM file:\n', bam_path)
+                   print('Error message:\n', error_msg)
 
-        variants_list.append(variant_record)
+                   variant['remarks'] = error_msg
 
-        N_variants_added += 1
+                   variant_tensor = None
 
-        if N_variants_added%Lbatch == 0:
+                for key in ('chrom', 'refpos', 'ref', 'alt'):
+                    variant['replaced_' + key] = replacement_variant[key] if replacement_variant else None
 
-            #save the batch to the disk when it is full
+                block_variants.append((variant_tensor, variant))
 
-            batch_name = f'{vcf_short_name}_{variants_list[-Lbatch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+            bam_file.close()
 
-            for i in range(-Lbatch,0):
-                variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
-                variants_list[i]['imgb_index']=i+Lbatch #tensor index in imgb batch
+        random.shuffle(block_variants)
 
+        variants_list = []
 
-            if not simulate:
-                #save batch to the disk
-                dump_batch(variants_batch, variants_list[-Lbatch:], os.path.join(*[output_dir, batch_subdir, batch_name]), simulate=simulate)
+        batch_tensors, batch_info, imgb_index = [], [], 0
 
-            variants_batch = [] #empty current batch
+        for variant_tensor, variant in block_variants:
 
-            if  len(variants_list)>1000:
-                #add variants_list to variants_df every 1000 tensors
-                variants_df = variants_df.append(variants_list, ignore_index=True)
-                variants_list = []
+            if variant_tensor!=None:
 
-    N_batch = len(variants_batch)
+                if imgb_index==0:
+                    batch_name = f'{vcf_short_name}_{variant["record_idx"]}.imgb'
 
-    if N_batch:
+                batch_subdir = str(total_batches//100)
 
-        batch_name = f'{vcf_short_name}_{variants_list[-N_batch]["record_idx"]}.imgb' #batch name: VCF record index (within the given chrom) of the 1st variant in the batch
+                variant.update({'imgb_index':imgb_index, 'batch_name':batch_name, 'subdir':batch_subdir})
 
-        for i in range(-N_batch,0):
-            variants_list[i]['batch_name']=batch_name #mark batch name in the variants list
-            variants_list[i]['imgb_index']=i+N_batch #tensor index in imgb batch
+                batch_tensors.append(variant_tensor)
+                batch_info.append(variant)
 
-        if not simulate:
-            #save batch to the disk
-            dump_batch(variants_batch, variants_list[-N_batch:], os.path.join(*[output_dir,  batch_subdir, batch_name]), simulate=simulate)
+                imgb_index += 1
 
-    variants_df = variants_df.append(variants_list, ignore_index=True)
+                if imgb_index==Lbatch:
+                    dump_batch(batch_tensors, batch_info, os.path.join(output_dir,  batch_subdir), batch_name, simulate=simulate)
+                    batch_tensors, batch_info, imgb_index = [], [], 0
+                    total_batches += 1
+
+            variants_list.append(variant)
+
+        variants_df = variants_df.append(variants_list, ignore_index=True)
+
+        if imgb_index>0:
+            dump_batch(batch_tensors, batch_info, os.path.join(output_dir,  batch_subdir), batch_name, simulate=simulate)
+
+    ref_file.close()
 
     return variants_df
