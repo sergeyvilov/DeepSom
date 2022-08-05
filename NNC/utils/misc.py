@@ -54,8 +54,14 @@ def get_misc_tensor_data(imgb_batch_meta, max_depth):
     Extract information about flanking regions for all variants in the imgb batch
     '''
     info = [(d['VAF0'],d['DP0'],*extract_flanking_info(d['info'])) for d in imgb_batch_meta]
+
     info = [list(map(float,item)) for item in info]
-    info = [[vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+
+    if max_depth < 0:
+        info = [[vaf, normalize_dp(dp, abs(max_depth)), -1, -1, -1, -1] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+    else:
+        info = [[vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+
     return info
 
 # def resample(df,                #dataframe with 'labels' column

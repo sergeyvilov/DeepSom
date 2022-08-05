@@ -108,9 +108,9 @@ def compute_VAF_DP(reads, variant, vartype, varlen, ins_at_variant):
             is_alt = [decode_bases(alt)==variant['alt'] for alt in variant_column]
 
         N_alts = sum(is_alt)
-        N_ref = len(variant_column)
+        DP = len(variant_column)
 
-        return N_alts/N_ref, N_ref, is_alt #VAF, DP, is ALT in read
+        return N_alts/DP, DP, is_alt #VAF, DP, is ALT in read
 
 
 def variant_to_tensor(variant, bam_file, ref_file,
@@ -243,19 +243,28 @@ def variant_to_tensor(variant, bam_file, ref_file,
     if not N_reads:
         raise Exception('No reads for this variant')
 
-    VAF0,DP0,_ = compute_VAF_DP(aligned_reads, variant, vartype, varlen, ins_at_variant) #VAF and DP before cropping
+    VAF0,DP0,is_alt = compute_VAF_DP(aligned_reads, variant, vartype, varlen, ins_at_variant) #VAF and DP before cropping
 
     #print(f'Before cropping: Read depth (DP): {DP0}, VAF:{VAF0}')
 
     #if there are more reads than we can include in the tensor, we have to remove some of them
 
-    if tensor_crop_strategy == 'center':
-        #keep reads at the top and at the bottom, remove in the center
-        aligned_reads = aligned_reads[:tensor_max_height//2] + aligned_reads[max(N_reads_tot-tensor_max_height//2,0):N_reads]
-    elif tensor_crop_strategy == 'topbottom':
-        #keep reads in the center, remove at the top and at the bottom
-        shift = max(N_reads//2-tensor_max_height//2,0)
-        aligned_reads = aligned_reads[shift:shift+tensor_max_height]
+    if N_reads>tensor_max_height:
+        #choose tensor_max_height reads s.t. the VAF is preserved
+        is_alt = np.array(is_alt)
+        alt_indices, ref_indices = np.where(is_alt), np.where(is_alt==False) #indices of alt and ref bases in the variant column
+        alt_indices_new = np.random.choice(alt_indices, int(VAF0*tensor_max_height), replace=False) #sample VAF0*tensor_max_height alt reads
+        ref_indices_new = np.random.choice(ref_indices, min(tensor_max_height-len(alt_indices_new), len(ref_indices)), replace=False) #the remaining are ref reads
+        chosen_indices = np.hstack((alt_indices_new, ref_indices_new))
+        aligned_reads = [read for read_idx, read in enumerate(aligned_reads) if read_idx in chosen_indices] #choose only reads with given indices
+
+    #if tensor_crop_strategy == 'center':
+    #    #keep reads at the top and at the bottom, remove in the center
+    #    aligned_reads = aligned_reads[:tensor_max_height//2] + aligned_reads[max(N_reads_tot-tensor_max_height//2,0):N_reads]
+    #elif tensor_crop_strategy == 'topbottom':
+    #    #keep reads in the center, remove at the top and at the bottom
+    #    shift = max(N_reads//2-tensor_max_height//2,0)
+    #    aligned_reads = aligned_reads[shift:shift+tensor_max_height]
 
     VAF,DP,is_alt = compute_VAF_DP(aligned_reads, variant, vartype, varlen, ins_at_variant) #VAF and DP after cropping
 
