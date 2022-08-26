@@ -26,7 +26,7 @@ from misc import print      #print function that displays time
 def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
 
-parser = argparse.ArgumentParser("generate_tensors.py")
+parser = argparse.ArgumentParser("nn.py")
 
 parser.add_argument("--train_dataset",                                help = "list of imgb batches used for training", type = str, default = None, required = False)
 parser.add_argument("--test_dataset",                                 help = "list of imgb batches for evaluation/inference", type = str, default = None, required = False)
@@ -260,10 +260,8 @@ else:
     print('\nCUDA device: CPU\n')
 
 
-if input_params.model_name=='ConvNN':
-    model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
-elif input_params.model_name=='ConvNN_flanking':
-    model = models.ConvNN_flanking(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
+
+model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
 
 model = model.to(device) #model to CUDA
 

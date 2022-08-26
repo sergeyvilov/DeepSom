@@ -252,7 +252,8 @@ def variant_to_tensor(variant, bam_file, ref_file,
     if N_reads>tensor_max_height:
         #choose tensor_max_height reads s.t. the VAF is preserved
         is_alt = np.array(is_alt)
-        alt_indices, ref_indices = np.where(is_alt), np.where(is_alt==False) #indices of alt and ref bases in the variant column
+        alt_indices = np.where(is_alt)[0] #indices of alt bases in the variant column
+        ref_indices = np.where(is_alt==False)[0] #indices of ref bases in the variant column
         alt_indices_new = np.random.choice(alt_indices, int(VAF0*tensor_max_height), replace=False) #sample VAF0*tensor_max_height alt reads
         ref_indices_new = np.random.choice(ref_indices, min(tensor_max_height-len(alt_indices_new), len(ref_indices)), replace=False) #the remaining are ref reads
         chosen_indices = np.hstack((alt_indices_new, ref_indices_new))

@@ -34,10 +34,10 @@ def extract_flanking_info(info):
     '''
     Extract information about flanking regions from an INFO string
     '''
-    if 'flanking=' in info:
-        info = re.search('flanking=([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)',info)
-    else:
-        info = re.search('flanking_lVAF=([0-9\.\-]*);flanking_lDP=([0-9\.\-]*);flanking_rVAF=([0-9\.\-]*);flanking_rDP=([0-9\.\-]*)',info)
+    #if 'flanking=' in info:
+    info = re.search('flanking=([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)',info)
+    #else:
+    #    info = re.search('flanking_lVAF=([0-9\.\-]*);flanking_lDP=([0-9\.\-]*);flanking_rVAF=([0-9\.\-]*);flanking_rDP=([0-9\.\-]*)',info)
     if info==None:
         return (-1,-1,-1,-1) #negative value when the data is missing
     return info.groups()
@@ -59,6 +59,7 @@ def get_misc_tensor_data(imgb_batch_meta, max_depth):
 
     if max_depth < 0:
         info = [[vaf, normalize_dp(dp, abs(max_depth)), -1, -1, -1, -1] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+        #info = [[-1, -1, -1, -1, -1, -1] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
     else:
         info = [[vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
 

@@ -14,7 +14,7 @@ min_DP=1 #minimum coverage at the variant site
 
 #Required number of variants in the output file
 N_train_snps_negative=60000
-N_train_indels_negative=15000 #x1.3 because many non-somatic indels will be filtered out during tensor generation
+N_train_indels_negative=13000 #x1.3 because many non-somatic indels will be filtered out during tensor generation
 N_train_snps_somatic=60000
 N_train_indels_somatic=10000
 

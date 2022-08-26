@@ -1,4 +1,4 @@
-# Neural Network Classifier.
+# DeepSom Neural Network Classifier.
 
 ## Setup
 
@@ -55,13 +55,13 @@ An example run of the NNC in test/inference mode:
 python nn.py \
 --test_dataset './inference/project_name/wgs_sample_name/tensors/wgs_sample_name_imgb.lst' \
 --output_dir './inference/project_name/wgs_sample_name/results/' \
---start_weight_model './train/train_dataset_name/results/weights/epoch_N_weights_model' \
+--model_weight './train/train_dataset_name/results/weights/epoch_N_weights_model' \
 --tensor_width 150 \
 --tensor_height 70 \
 --max_depth 150 \
 ```
 
-`--start_weight_model` --- path to the weights of a pretrained model.
+`--model_weight` --- path to the weights of a pretrained model.
 
 `--max_depth`, `--tensor_width`, `--tensor_height` --- should correspond to values used for training.
 

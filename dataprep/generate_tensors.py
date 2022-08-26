@@ -69,4 +69,4 @@ variants_df.to_csv(os.path.join(gen_params['output_dir'], "variants.csv"), sep="
 t_exec = time.time() - t0 #total execution time
 
 print(f"{gen_params['output_dir']}\nFinished successfully. Execution time: {t_exec//60:.0f}m {t_exec%60:.1f}s.")
-print(f'{len(variants_df)} variants is created, distributed over {len(variants_df.batch_name.unique())} batches')
+print(f'{(variants_df.remarks=="success").sum()} variants are created, distributed over {variants_df.batch_name.nunique()} batches')
