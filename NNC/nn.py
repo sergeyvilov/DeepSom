@@ -85,7 +85,7 @@ if input_params.train_dataset:
 
     train_valid_images = train_valid_images.sample(frac=1., random_state=1).tolist() #shuffle
 
-    N_valid = int(input_params.val_fraction*len(train_valid_images)) #numebr of validation instances
+    N_valid = int(input_params.val_fraction*len(train_valid_images)) #number of validation instances
 
     valid_images, train_images = train_valid_images[:N_valid], train_valid_images[N_valid:]
 

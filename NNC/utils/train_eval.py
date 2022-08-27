@@ -9,7 +9,7 @@ def model_train(model, optimizer, dataloader, device):
 
     criterion = nn.BCELoss() #binary cross-entropy
 
-    tot_itr = len(dataloader.dataset.data)//dataloader.batch_size #total train iterations
+    #tot_itr = len(dataloader.dataset.data)//dataloader.batch_size #total train iterations
 
     #pbar = tqdm(total = tot_itr, ncols=700) #progress bar
 
@@ -57,7 +57,7 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
     criterion = nn.BCELoss() #binary cross-entropy
 
-    tot_itr = len(dataloader.dataset.data)//dataloader.batch_size #total evaluation iterations
+    #tot_itr = len(dataloader.dataset.data)//dataloader.batch_size #total evaluation iterations
 
     #pbar = tqdm(total = tot_itr, ncols=700) #progress bar
 

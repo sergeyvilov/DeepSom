@@ -18,7 +18,9 @@ def dump_batch(batch_tensors, batch_info, output_dir, batch_name, simulate=False
     if not simulate:
         os.makedirs(output_dir, exist_ok = True)
         with open(os.path.join(output_dir, batch_name), 'wb') as f:
-            pickle.dump({'images':batch_tensors, 'info':batch_info}, f)
+            for tensor, info in zip(batch_tensors, batch_info):
+                pickle.dump([tensor,info], f)
+                #pickle.dump({'images':batch_tensors, 'info':batch_info}, f)
 
 def get_tensors(vcf :str,                             #full path to a VCF file with the variants
                bam_dir: str,                          #directory with corresponding BAM files
@@ -59,7 +61,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
     See the variant_to_tensor function to learn more about tensor options.
     '''
 
-    BLOCK_LENGTH = 1000
+    BLOCK_LENGTH = 5000
 
     variants_df = pd.DataFrame(columns=["vcf", "record_idx", "chrom", "pos", "ref", "alt", "VAF0", "DP0", "tensor_height", "batch_name", "imgb_index", "subdir", "remarks"]) # DataFrame for variant annotations
 
@@ -81,7 +83,7 @@ def get_tensors(vcf :str,                             #full path to a VCF file w
 
     vcf_in['true_label'] = vcf_in['info'].apply(lambda x: 1 if 'SOMATIC' in x else 0).astype(int)
 
-    vcf_in = vcf_in.sample(frac=1., random_state=1) #shuffle input vcf
+    vcf_in = vcf_in.sample(frac=1., random_state=hash(vcf)) #shuffle input vcf
 
     if replacement_csv:
         replacement_df = pd.read_csv(replacement_csv, names=['chrom', 'refpos', 'ref', 'alt'], dtype={'chrom':str, 'refpos':int})
