@@ -19,14 +19,14 @@ def model_train(model, optimizer, dataloader, device):
 
     all_predictions = []
 
-    for itr_idx, (tensors, labels, misc_data, tensors_dataset_idx) in enumerate(dataloader):
+    for itr_idx, (tensors, labels, misc_data, variant_meta) in enumerate(dataloader):
 
         #if itr_idx==10:
         #    break
-        tensors = torch.tensor(tensors, dtype=torch.float).to(device)
-        labels = torch.tensor(labels, dtype=torch.float).to(device)
+        tensors = tensors.to(device)
+        labels = labels.to(device)
 
-        misc_data = torch.tensor(misc_data, dtype=torch.float).to(device)
+        misc_data = misc_data.to(device)
 
         outputs = model((tensors, misc_data))
 
@@ -43,7 +43,7 @@ def model_train(model, optimizer, dataloader, device):
         outputs = outputs.cpu().tolist()
         labels = labels.cpu().tolist()
 
-        current_predictions = list(zip(tensors_dataset_idx,outputs, labels)) #(tensors_dataset_idx, prediction, true_label)
+        current_predictions = list(zip(outputs, labels, variant_meta)) #(tensors_dataset_idx, prediction, true_label)
         all_predictions.extend(current_predictions)
 
         #pbar.update(1)
@@ -67,21 +67,21 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
     with torch.no_grad():
 
-        for itr_idx, (tensors, labels, misc_data, tensors_dataset_idx) in enumerate(dataloader):
+        for itr_idx, (tensors, labels, misc_data, variant_meta) in enumerate(dataloader):
 
             #if itr_idx==10:
             #    break
-            tensors = torch.tensor(tensors, dtype=torch.float).to(device)
+            tensors = tensors.to(device)
 
-            misc_data = torch.tensor(misc_data, dtype=torch.float).to(device)
+            misc_data = misc_data.to(device)
 
             outputs = model((tensors, misc_data))
 
-            if not None in labels:
+            if not labels.isnan().sum():
 
                 #in inference mode, all labels are None
 
-                labels = torch.tensor(labels, dtype=torch.float).to(device)
+                labels = labels.to(device)
 
                 loss = criterion(outputs, labels)
 
@@ -91,7 +91,7 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
             outputs = outputs.cpu().tolist()
 
-            current_predictions = list(zip(tensors_dataset_idx,outputs, labels)) #(tensors_dataset_idx, prediction, true_label)
+            current_predictions = list(zip(outputs, labels, variant_meta)) #(tensors_dataset_idx, prediction, true_label)
             all_predictions.extend(current_predictions)
 
             #pbar.update(1)

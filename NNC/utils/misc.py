@@ -49,71 +49,21 @@ def normalize_dp(dp, max_depth):
         #negative value when the data is missing
         return max(dp,-1) #clip the left tail
 
-def get_misc_tensor_data(imgb_batch_meta, max_depth):
+def get_misc_tensor_data(variant_meta, max_depth):
     '''
     Extract information about flanking regions for all variants in the imgb batch
     '''
-    info = [(d['VAF0'],d['DP0'],*extract_flanking_info(d['info'])) for d in imgb_batch_meta]
+    info = (variant_meta['VAF0'],variant_meta['DP0'],*extract_flanking_info(variant_meta['info']))
 
-    info = [list(map(float,item)) for item in info]
+    vaf,dp,lvaf,ldp,rvaf,rdp = list(map(float,info))
 
     if max_depth < 0:
-        info = [[vaf, normalize_dp(dp, abs(max_depth)), -1, -1, -1, -1] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
-        #info = [[-1, -1, -1, -1, -1, -1] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+        info = [vaf, normalize_dp(dp, abs(max_depth)), -1, -1, -1, -1]
+        #info = [-1, -1, -1, -1, -1, -1]
     else:
-        info = [[vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)] for vaf,dp,lvaf,ldp,rvaf,rdp in info]
+        info = [vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)]
 
     return info
-
-# def resample(df,                #dataframe with 'labels' column
-#             resample_mode       #None, 'upsample' or 'downsample'
-#             ):
-#     """
-#     Equilibrate classes in the dataframe by resampling
-#
-#     resample_mode:
-#
-#     None: do not resample
-#     "upsample": equilibrate classes by upsampling to the overrepresented class
-#     "downsample": equilibrate classes by downsampling to the underrepresented class
-#
-#     """
-#
-#     if len(df)==0 or str(resample_mode)=='None':
-#         return df
-#
-#     current_class_counts = df['label'].value_counts()
-#
-#     if resample_mode == 'upsample':
-#
-#         new_class_counts = [(class_name, current_class_counts.max()) for class_name in
-#                                df['label'].unique()]
-#
-#     elif resample_mode == 'downsample':
-#
-#         new_class_counts = [(class_name, current_class_counts.min()) for class_name in
-#                                df['label'].unique()]
-#
-#     else:
-#
-#         raise Exception(f'Resample mode not recognized: {resample_mode}')
-#
-#     resampled_df = pd.DataFrame()
-#
-#     for class_name, class_counts in new_class_counts:
-#
-#         class_df = df.loc[df['label']==class_name]
-#
-#         replace = class_counts>current_class_counts[class_name] #will be True only for upsampling
-#
-#         resampled_class_df = class_df.sample(n=class_counts, replace=replace, random_state=1)
-#
-#         resampled_df = pd.concat([resampled_df, resampled_class_df])
-#
-#     resampled_df = resampled_df.sample(frac=1, random_state=1)
-#
-#     return resampled_df
-
 
 def get_ROC(predictions):
 
@@ -126,7 +76,7 @@ def get_ROC(predictions):
     if len(predictions)==0:
         return -1.0, 'ROC curve can not be displayed'
 
-    _, y_pred, y_true = zip(*predictions)
+    y_pred, y_true, _ = zip(*predictions)
 
     y_pred, y_true = np.array(y_pred), np.array(y_true)
 
@@ -149,7 +99,7 @@ def get_ROC(predictions):
     return auROC, ROC_df
 
 
-def save_predictions(predictions, dataset, output_dir, output_name):
+def save_predictions(predictions, output_dir, output_name):
 
     '''
     Save predictions in a vcf file
@@ -160,13 +110,12 @@ def save_predictions(predictions, dataset, output_dir, output_name):
     predictions_snps, predictions_indels = list(), list()
 
     #loop over all predictions
-    for tensor_pos, score, label in predictions:
-        variant_meta = dataset.variant_meta[tensor_pos[0]][tensor_pos[1]] #locate variant meta information
+    for score, label, variant_meta in predictions:
         variant_row = [variant_meta['chrom'], variant_meta['pos'], '.', variant_meta['ref'], variant_meta['alt'], '.', '.']  #this will be a row in the output vcf file
         if len(variant_meta['ref']) == len(variant_meta['alt']):
-            predictions_snps.append((None,score,label))
+            predictions_snps.append((score,label,None))
         else:
-            predictions_indels.append((None,score,label))
+            predictions_indels.append((score,label,None))
         if 'info' in variant_meta.keys():
             variant_info = variant_meta['info'] + ';'
         else:

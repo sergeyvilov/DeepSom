@@ -13,7 +13,8 @@ import pickle
 import time
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import IterableDataset, DataLoader
+from itertools import chain
 
 sys.path.append('utils')
 
@@ -39,7 +40,7 @@ parser.add_argument("--tensor_width",                                 help = "te
 parser.add_argument("--tensor_height",                                help = "tensor height, all variants with larger read depth will be cropped", type = int, required = True)
 parser.add_argument("--max_depth",                                    help = "99th quantile of read depth  distribution", type = float, default = 150., required = False)
 parser.add_argument("--val_fraction",                                 help = "fraction of train dataset to use for validation", type = float, default = 0, required = False)
-parser.add_argument("--batch_size",                                   help = "number of imgb batches combined in one SGD batch at each SGD iteration", type = int, default = 1, required = False)
+parser.add_argument("--batch_size",                                   help = "batch size at training", type = int, default = 32, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
 parser.add_argument("--weight_decay",                                 help = "weight decay for optimizer", type = float, default = 0.1, required = False)
 parser.add_argument("--dropout",                                      help = "dropout in fully connected layers", type = float, default = 0.5, required = False)
@@ -105,32 +106,35 @@ if input_params.test_dataset:
 
 assert train_on+valid_on+test_on>0, 'Insufficient number of instances for operation' #not enough tensors for training/evaluation
 
-class TensorDataset(Dataset):
+p_hot_correction_factor = 1e-4 #for p-hot reads encoded as ushort in variant_to_tensor function
+
+class TensorDataset(IterableDataset):
 
     '''
     Dataset of variant tensors
     '''
 
     def __init__(self,
-                 data,           #full path to imgb batches with corresponding labels
+                 imgb_list,      #full path to imgb batches with corresponding labels
                  target_height,  #target tensor height for the neural network
                  target_width,   #target tensor width for the neural network
                  max_depth,      #constant for normalizing read depth
                 ):
 
-        self.data = data
+        self.imgb_list = imgb_list
         self.target_height = target_height
         self.target_width = target_width
         self.max_depth = max_depth
 
-        self.variant_meta = [[] for idx in range(len(self.data))]
-        self.variant_misc_data = [[] for idx in range(len(self.data))]
+    def process_data(self, imgb_path):
+        with open(imgb_path, 'rb') as imgb_header:
+            while True:
+                try:
+                    yield self.get_tensor(imgb_header)
+                except EOFError:
+                    break
 
-    def __len__(self):
-
-        return len(self.data)
-
-    def __getitem__(self, idx):
+    def get_tensor(self, imgb_header):
 
         '''
         Retrieve a single imgb batch with variant tensors
@@ -148,88 +152,61 @@ class TensorDataset(Dataset):
         we remove some reads on the left and on the right, leaving the central part.
 
         '''
+        tensor, variant_meta = pickle.load(imgb_header)
 
-        imgb_path = self.data[idx] #retrieve imgb batch
+        one_hot_ref = tensor['one_hot_ref']
+        p_hot_reads = tensor['p_hot_reads']*p_hot_correction_factor
+        flags_reads = tensor['flags_reads']
 
-        p_hot_correction_factor = 1e-4 #for p-hot reads encoded as ushort in variant_to_tensor function
+        tensor_height, tensor_width, _ = p_hot_reads.shape #current size
 
-        #load imgb batch of tensors
-        with open(imgb_path, 'rb') as f:
+        one_hot_ref = np.tile(one_hot_ref, (tensor_height,1,1)) #propagate reference bases over all reads
 
-            tensors = pickle.load(f)
+        tensor = np.concatenate((one_hot_ref,p_hot_reads,flags_reads), axis=2)
 
-        N_tensors = len(tensors['images']) #number of tensors in the current imgb batch
+        if self.target_height>tensor_height:
 
-        if len(self.variant_meta[idx]) == 0:
-            self.variant_meta[idx] = tensors['info'] #extract meta information about the variants in the batch: chrom, pos, ref, alt, vcf name
-            self.variant_misc_data[idx] = misc.get_misc_tensor_data(self.variant_meta[idx], self.max_depth) #extract information added explicitly to fully connected layers (flanking regions)
+            #if there are not enough reads, pad tensor with 0 to reach the target_height
+            padding_tensor = np.zeros((self.target_height-tensor_height, tensor_width, 14))
 
-        full_tensors = [] #tensors of right dimensions (self.target_height, self.target_width)
+            full_tensor_h = np.concatenate((tensor, padding_tensor), axis = 0) #concatenate over the reads axis
+            full_tensor_h = np.roll(full_tensor_h,max(self.target_height//2-tensor_height//2,0),axis=0) #put the piledup reads in the center
 
-        #loop over all tensors in the imgb batch and adjust their size to (self.target_height, self.target_width)
-        for tensor in tensors['images']:
+        else:
 
-            one_hot_ref = tensor['one_hot_ref']
-            p_hot_reads = tensor['p_hot_reads']*p_hot_correction_factor
-            flags_reads = tensor['flags_reads']
+            #if there are too many reads, keep reads in the center, remove at the top and at the bottom
+            shift = max(tensor_height//2-self.target_height//2,0)
+            full_tensor_h = tensor[shift:shift+self.target_height,:,:]
 
-            tensor_height, tensor_width, _ = p_hot_reads.shape #current size
+        if self.target_width>tensor_width:
 
-            one_hot_ref = np.tile(one_hot_ref, (tensor_height,1,1)) #propagate reference bases over all reads
+            #if reads are too short, pad reads with 0 to reach the target width
+            padding_tensor = np.zeros((self.target_height, self.target_width-tensor_width, 14))
+            full_tensor_w = np.concatenate((full_tensor_h, padding_tensor), axis = 1) #concatenate over the sequence axis
+            full_tensor_w = np.roll(full_tensor_w,max(self.target_width//2-tensor_width//2,0),axis=1) #put the piledup reads in the center of tensor
 
-            tensor = np.concatenate((one_hot_ref,p_hot_reads,flags_reads), axis=2)
+        else:
 
-            if self.target_height>tensor_height:
+            #if there are too many reads, keep reads in the center, remove on the left and on the right
+            shift = max(tensor_width//2-self.target_width//2,0)
+            full_tensor_w = full_tensor_h[:,shift:shift+self.target_width,:]
 
-                #if there are not enough reads, pad tensor with 0 to reach the target_height
-                padding_tensor = np.zeros((self.target_height-tensor_height, tensor_width, 14))
+        full_tensor = np.transpose(full_tensor_w, (2,0,1)) #change dimensions order to CxWxH
 
-                full_tensor_h = np.concatenate((tensor, padding_tensor), axis = 0) #concatenate over the reads axis
-                full_tensor_h = np.roll(full_tensor_h,max(self.target_height//2-tensor_height//2,0),axis=0) #put the piledup reads in the center
+        label = variant_meta["true_label"]
 
-            else:
+        misc_data = misc.get_misc_tensor_data(variant_meta, self.max_depth) #extract information added explicitly to fully connected layers (flanking regions)
 
-                #if there are too many reads, keep reads in the center, remove at the top and at the bottom
-                shift = max(tensor_height//2-self.target_height//2,0)
-                full_tensor_h = tensor[shift:shift+self.target_height,:,:]
+        return full_tensor, label, misc_data, variant_meta
 
-            if self.target_width>tensor_width:
-
-                #if reads are too short, pad reads with 0 to reach the target width
-                padding_tensor = np.zeros((self.target_height, self.target_width-tensor_width, 14))
-                full_tensor_w = np.concatenate((full_tensor_h, padding_tensor), axis = 1) #concatenate over the sequence axis
-                full_tensor_w = np.roll(full_tensor_w,max(self.target_width//2-tensor_width//2,0),axis=1) #put the piledup reads in the center of tensor
-
-            else:
-
-                #if there are too many reads, keep reads in the center, remove on the left and on the right
-                shift = max(tensor_width//2-self.target_width//2,0)
-                full_tensor_w = full_tensor_h[:,shift:shift+self.target_width,:]
-
-            full_tensor = np.transpose(full_tensor_w, (2,0,1)) #change dimensions order to CxWxH
-
-            full_tensors.append(full_tensor)
-
-        labels = [info["true_label"] for info in tensors['info']]
-
-        tensors_dataset_idx = [(idx,x) for x in range(N_tensors)] # position of each tensor in the dataset (idx_of_imgb_batch, pos_in_imgb_batch), to keep track of each individual tensor
-
-        misc_data = self.variant_misc_data[idx] #information to be added to fully connected layers
-
-        return full_tensors, labels, misc_data, tensors_dataset_idx
+    def __iter__(self):
+        return chain.from_iterable(map(self.process_data, self.imgb_list))
 
 def collate_fn(data):
     '''
-    Collate imgb batches
+    Collate tensors
     '''
-
-    output = []
-
-    for item in zip(*data):
-        item_flattened = np.array([sample for batch in item for sample in batch])
-        output.append(item_flattened)
-
-    return output
+    return [torch.tensor(np.array(item, dtype=float), dtype=torch.float) if item_idx<3 else item for item_idx, item in enumerate(zip(*data))]
 
 #define train and evaluation datasets/dataloaders
 
@@ -237,19 +214,19 @@ if train_on:
 
     train_dataset = TensorDataset(train_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=1, collate_fn=collate_fn)
 
 if valid_on:
 
     valid_dataset = TensorDataset(valid_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
-    valid_dataloader = DataLoader(valid_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
 
 if test_on:
 
     test_dataset = TensorDataset(test_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
 
 #access the GPU
 if torch.cuda.is_available():
@@ -258,8 +235,6 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
     print('\nCUDA device: CPU\n')
-
-
 
 model = models.ConvNN(dropout=input_params.dropout, target_width=input_params.tensor_width, target_height=input_params.tensor_height) #define model
 
@@ -334,7 +309,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
             misc.save_model_weights(model, optimizer, weights_dir, epoch)
 
-            misc.save_predictions(train_pred, train_dataset, predictions_dir, f'training_epoch_{epoch}.vcf') #save train predictions on disk
+            misc.save_predictions(train_pred, predictions_dir, f'training_epoch_{epoch}.vcf') #save train predictions on disk
 
     if valid_on:
 
@@ -346,7 +321,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         print(f'EPOCH: {epoch} - validation loss: {valid_loss:.4}, validation ROC AUC: {valid_ROC_AUC:.4}')
 
-        misc.save_predictions(valid_pred, valid_dataset, predictions_dir, f'validation_epoch_{epoch}.vcf') #save validation predictions on disk
+        misc.save_predictions(valid_pred, predictions_dir, f'validation_epoch_{epoch}.vcf') #save validation predictions on disk
 
     if test_on and epoch==tot_epochs:
 
@@ -358,7 +333,7 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
         tot_test_time = time.time() - start_time
 
-        _, _, labels = zip(*test_pred)
+        _, labels, _ = zip(*test_pred)
 
         if not None in labels: #if that's a test dataset
 
@@ -366,10 +341,10 @@ for epoch in range(last_epoch+1, tot_epochs+1):
 
             print(f'EPOCH: {epoch} - test loss: {test_loss:.4}, test ROC AUC: {test_ROC_AUC:.4}')
 
-        misc.save_predictions(test_pred, test_dataset, predictions_dir, 'final_predictions.vcf') #save test/inference predictions on disk
+        misc.save_predictions(test_pred, predictions_dir, 'final_predictions.vcf') #save test/inference predictions on disk
 
 
-print(f'peak memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
+print(f'peak GPU memory allocation: {round(torch.cuda.max_memory_allocated(device)/1024/1024)} Mb')
 print(f'total train time: {round(tot_train_time)} s : {round(len(train_pred)*(tot_epochs-last_epoch)/(tot_train_time+1))} samples/s')
 print(f'total inference time: {round(tot_test_time)} s : {round(len(test_pred)/(tot_test_time+1))} samples/s')
 print('Done')
