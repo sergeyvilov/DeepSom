@@ -21,11 +21,8 @@ def model_train(model, optimizer, dataloader, device):
 
     for itr_idx, (tensors, labels, misc_data, variant_meta) in enumerate(dataloader):
 
-        #if itr_idx==10:
-        #    break
         tensors = tensors.to(device)
         labels = labels.to(device)
-
         misc_data = misc_data.to(device)
 
         outputs = model((tensors, misc_data))
@@ -43,13 +40,13 @@ def model_train(model, optimizer, dataloader, device):
         outputs = outputs.cpu().tolist()
         labels = labels.cpu().tolist()
 
-        current_predictions = list(zip(outputs, labels, variant_meta)) #(tensors_dataset_idx, prediction, true_label)
+        current_predictions = list(zip(outputs, labels, variant_meta))
         all_predictions.extend(current_predictions)
 
         #pbar.update(1)
         #pbar.set_description(f"Running loss:{smoothed_loss:.4}")
 
-    return smoothed_loss, all_predictions #return average loss and predictions
+    return smoothed_loss, all_predictions
 
 def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
@@ -69,32 +66,23 @@ def model_eval(model, optimizer, dataloader, device, inference_mode=False):
 
         for itr_idx, (tensors, labels, misc_data, variant_meta) in enumerate(dataloader):
 
-            #if itr_idx==10:
-            #    break
             tensors = tensors.to(device)
-
+            labels = labels.to(device)
             misc_data = misc_data.to(device)
 
             outputs = model((tensors, misc_data))
 
-            if not labels.isnan().sum():
+            loss = criterion(outputs, labels)
 
-                #in inference mode, all labels are None
-
-                labels = labels.to(device)
-
-                loss = criterion(outputs, labels)
-
-                all_loss += loss.item()
-
-                labels = labels.cpu().tolist()
+            all_loss += loss.item()
 
             outputs = outputs.cpu().tolist()
+            labels = labels.cpu().tolist()
 
-            current_predictions = list(zip(outputs, labels, variant_meta)) #(tensors_dataset_idx, prediction, true_label)
+            current_predictions = list(zip(outputs, labels, variant_meta))
             all_predictions.extend(current_predictions)
 
             #pbar.update(1)
             #pbar.set_description(f"Running loss:{all_loss/(itr_idx+1):.4}")
 
-    return all_loss/(itr_idx+1), all_predictions #return average loss and predictions
+    return all_loss/(itr_idx+1), all_predictions

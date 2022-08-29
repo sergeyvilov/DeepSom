@@ -1,4 +1,4 @@
-name: dataprep
+name: DeepSom-dataprep
 channels:
   - anaconda
   - bioconda

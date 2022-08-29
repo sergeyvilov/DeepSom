@@ -26,7 +26,7 @@ def print(*args, **kwargs):
     '''
     Redefine print function for logging
     '''
-    now = time.strftime("[%Y/%m/%d-%H:%M:%S]-", time.localtime()) #place current time at the beggining of each printed line
+    now = time.strftime("[%Y/%m/%d-%H:%M:%S]-", time.localtime()) #current date and time at the beggining of each printed line
     builtins.print(now, *args, **kwargs)
     sys.stdout.flush()
 
@@ -34,24 +34,26 @@ def extract_flanking_info(info):
     '''
     Extract information about flanking regions from an INFO string
     '''
-    #if 'flanking=' in info:
     info = re.search('flanking=([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)',info)
-    #else:
-    #    info = re.search('flanking_lVAF=([0-9\.\-]*);flanking_lDP=([0-9\.\-]*);flanking_rVAF=([0-9\.\-]*);flanking_rDP=([0-9\.\-]*)',info)
+
     if info==None:
-        return (-1,-1,-1,-1) #negative value when the data is missing
+        return (-1,-1,-1,-1) #negative value when data is missing
+
     return info.groups()
 
 def normalize_dp(dp, max_depth):
+    '''
+    Normalize read depth
+    '''
     if dp>0:
-        return min(dp/max_depth,1) #normalize clip the right tail
+        return min(dp/max_depth,1)
     else:
         #negative value when the data is missing
-        return max(dp,-1) #clip the left tail
+        return max(dp,-1)
 
 def get_misc_tensor_data(variant_meta, max_depth):
     '''
-    Extract information about flanking regions for all variants in the imgb batch
+    Extract information about flanking regions for a variant
     '''
     info = (variant_meta['VAF0'],variant_meta['DP0'],*extract_flanking_info(variant_meta['info']))
 
@@ -68,15 +70,18 @@ def get_misc_tensor_data(variant_meta, max_depth):
 def get_ROC(predictions):
 
     '''
-    Compute ROC from NN predictions,
+    Compute ROC from CNN predictions
 
     return AUC and interpolated ROC curve
     '''
 
     if len(predictions)==0:
-        return -1.0, 'ROC curve can not be displayed'
+        return -1., 'ROC can not be computed: no predictions were made'
 
     y_pred, y_true, _ = zip(*predictions)
+
+    if all(y_true) or not any(y_true):
+        return -1., 'ROC can not be computed: variant labels are all equal or absent (possibly inference dataset)'
 
     y_pred, y_true = np.array(y_pred), np.array(y_true)
 
@@ -120,13 +125,12 @@ def save_predictions(predictions, output_dir, output_name):
             variant_info = variant_meta['info'] + ';'
         else:
             variant_info = ''
-        for key in ['vcf', 'BAM', 'DP', 'VAF', 'DP0', 'VAF0', 'refseq', 'batch_name', 'imgb_index', 'GERMLINE', 'Sample']:
-            #all supplementary information goes to the INFO field
+        for key in ['vcf', 'DP0', 'VAF0', 'refseq', 'batch_name', 'imgb_index']:
+            #all supplementary information from variant_meta goes to the INFO field
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
-        variant_info += f'nnc_score={score:.4}'
-        if label!=None:
-            variant_info += f';true_label={int(label)}'
+        variant_info += f'cnn_score={score:.4}'
+
         variant_row.append(variant_info)
         output_list.append(variant_row)
 
@@ -140,7 +144,7 @@ def save_predictions(predictions, output_dir, output_name):
     print(f'ROC AUC INDELs: {roc_auc_indels:.4}\n')
     builtins.print(roc_curve_indels)
 
-    output_df = pd.DataFrame(output_list, columns=['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']) #list to a DataFrame
+    output_df = pd.DataFrame(output_list, columns=['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']) #list to DataFrame
 
     chrom_dict = {'X':23,'Y':24,'M':25,'MT':25,'chrX':23,'chrY':24,'chrM':25,'chrMT':25}
     output_df.sort_values(by=['#CHROM', 'POS'], key=lambda a:a.apply(lambda x:int(x) if type(x)==int or x.isnumeric() else chrom_dict.get(x,100)), inplace=True) #sort variants by chrom
@@ -151,19 +155,18 @@ def save_predictions(predictions, output_dir, output_name):
     with open(output_name, 'w') as f:
             f.write('##fileformat=VCFv4.2\n')
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
-            f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name for the variant">\n')
-            f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name for the variant">\n')
-            f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name for the variant">\n')
+            f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name">\n')
+            f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name">\n')
+            f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name">\n')
             f.write('##INFO=<ID=GERMLINE,Number=1,Type=Integer,Description="Germline variant">\n')
             f.write('##INFO=<ID=SOMATIC,Number=1,Type=Integer,Description="Somatic variant">\n')
-            f.write('##INFO=<ID=DP0,Number=1,Type=Integer,Description="DP from BAM file">\n')
-            f.write('##INFO=<ID=VAF0,Number=1,Type=Float,Description="VAF from BAM file">\n')
-            f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="Alternative allele frequency as in GNOMAD">\n')
-            f.write('##INFO=<ID=refseq,Number=.,Type=String,Description="Reference sequence around the variant site, 30 bases to the left and $half_n_ref_bases bases to the right">\n')
+            f.write('##INFO=<ID=DP0,Number=1,Type=Integer,Description="DP based on BAM">\n')
+            f.write('##INFO=<ID=VAF0,Number=1,Type=Float,Description="VAF based on BAM">\n')
+            f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="gnomAD population allele frequency">\n')
+            f.write('##INFO=<ID=refseq,Number=.,Type=String,Description="Reference sequence around the variant">\n')
             f.write('##INFO=<ID=batch_name,Number=.,Type=String,Description="Name of the imgb batch containing the variant">\n')
             f.write('##INFO=<ID=imgb_index,Number=1,Type=Integer,Description="Index of the variant in the imgb batch">\n')
-            f.write('##INFO=<ID=nnc_score,Number=1,Type=Float,Description="Neural Network classification score">\n')
-            f.write('##INFO=<ID=true_label,Number=1,Type=Integer,Description="True label (0 or 1)">\n')
+            f.write('##INFO=<ID=cnn_score,Number=1,Type=Float,Description="CNN classification score">\n')
 
     output_df.to_csv(output_name, mode='a', sep='\t', index=False) #append predictions to the vcf file
 

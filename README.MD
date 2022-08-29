@@ -1,14 +1,13 @@
-# DeepSom Neural Network Classifier for calling somatic SNP and INDEL variants without a matched normal.
+# DeepSom. A CNN - based pipeline for calling somatic SNP and INDEL variants without a matched normal
 
-The Neural Network Classifier (NNC) can be used in three modes:
+DeepSom can operate in three modes:
 
-1. Train mode. During training, the NNC learns relationships between variants and variant classes.
+- Inference mode. In this mode, the convolutional neural network (CNN) assigns a pseudoprobability score to each candidate variant which can then be classified as somatic or non-somatic. This is the main operating mode.
 
-2. Evaluation (test) mode. The performance of the trained model is evaluated using an independent test set.
-Such metrics as ROC AUC or test loss can be calculated.
+- Test(evaluation) mode. In this mode, we use variants with known labels (somatic/non-somatic) to evaluate DeepSom performance.
 
-3. Inference mode. The probability for a given variant to be somatic is computed based on the NNC output.
+- Train mode. In this  mode, the CNN learns relationships between variant tensors and variant labels (somatic/non-somatic). This results in a model which can be used in inference or evaluation.
 
-See  [dataprep](dataprep/) on how to prepare data for the NNC.
+See [dataprep](dataprep/) on how to prepare data for the CNN.
 
-See  [NNC](NNC/) on how to run the NNC.
+See [cnn](cnn/) on how to run the CNN.

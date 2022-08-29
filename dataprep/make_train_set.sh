@@ -2,7 +2,7 @@
 
 #######################################################
 #
-#Select required number of variants for NNC training
+#Select required number of variants for CNN training
 #
 #Input: train.vcf.gz
 #Output: train.selected.tsv
@@ -66,7 +66,7 @@ cat negative_train_snps.temp.tsv somatic_train_snps.temp.tsv negative_train_inde
 #cat negative_train_indels.temp.tsv somatic_train_indels.temp.tsv|shuf > train_indels.temp.tsv
 #
 #
-#variants_per_split=1000
+#variants_per_split=5000
 #
 #mkdir -p train/
 #

@@ -1,10 +1,8 @@
-# Data preparation for the Neural Network Classifier (NNC)
+# DeepSom data preprocessing
 
-The NNC can be used in train, evaluation (test) or inference mode. In all the three modes, the NNC accepts SNP/INDEL variants encoded in the form of 3D variant tensors. Here, we describe how to prepare such variant tensors.
+DeepSom can be used in train, evaluation (test) or inference mode. In all the three modes, the [CNN](../CNN) accepts SNP/INDEL variants encoded in the form of 3D variant tensors. Here, we describe how variant tensors should be prepared.
 
-The dependencies for the data preparation step can be installed as described below.
-
-## Setup
+## Setup dependencies
 
 Install  [miniconda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html).
 
@@ -12,38 +10,37 @@ Then run:
 
 ```
 conda env create -f environment.yml
-conda activate dataprep
+conda activate DeepSom-dataprep
 ```
 
-## Data preprocessing in inference mode
+We shall first describe how to prepare tensors for inference since it involves the smallest number of steps.
 
-We shall first describe how to prepare tensors for inference on a single WGS sample.
-In inference mode, we don't know true variant labels (somatic/non-somatic) and use the NNC to classify the variants.
-
-Data preparation consists of several steps:
+## Inference mode
 
 1. Call all possible variants (somatic, germline + artefacts)
 
 Using [Mutect2](https://gatk.broadinstitute.org/hc/en-us/articles/360037593851-Mutect2) in tumour-only mode we call all possible
-variants in the sample.
+variants based on the sample BAM file.
 
-For the next steps, do NOT merge VCF files for all samples. Each VCF file must contain variants for one sample only.
+Right after calling, do NOT merge VCF files for all WGS samples. Each VCF file must contain variants for one sample only.
 
-In the following, we will discuss tensor preparation for one VCF file, let it be `wgs_sample_name.vcf.gz`.
+For the next steps, keep all BAM files in a single folder.
+
+In the following, we will discuss tensor preparation for one of these VCF files, let it be `wgs_sample_name.vcf.gz`.
 
 2. Annotate for gnomAD population allele frequency
 
-This step can be skipped if variant pre-filtering is not required and the flanking regions feature is
+This step can be skipped if gnomAD-based variant pre-filtering is not needed and the flanking regions feature is
 not going to be used for classification.
 
-For each called variant, we add information about the population allele frequency in the [gnomAD](https://gnomad.broadinstitute.org/) database. A single VCF file can be annotated using the following command:
+For each called variant, we add information about the population allele frequency (AF) in the [gnomAD](https://gnomad.broadinstitute.org/) database. A single VCF file can be annotated as follows:
 
 ```
 annotation_file=gnomAD_dir/gnomAD_light.vcf.gz #path to lightweight gnomAD VCF
 
-tabix wgs_sample_name.vcf.gz
-
 echo '##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="Alternative allele frequency as in GNOMAD v.3.1.1">' > gnomad_header.txt
+
+tabix wgs_sample_name.vcf.gz
 
 bcftools annotate --threads 4  \
 -c 'ID,INFO/gnomAD_AF:=INFO/AF' \
@@ -54,14 +51,14 @@ wgs_sample_name.vcf.gz \
 ```
 
 The gnomAD database consists of per-chromosome VCF files and is quite huge. Annotating with it would take many hours.
-However, we need only the allele frequency (AF) information of each gnomAD variant. So, we make a single VCF file `gnomAD_light.vcf.gz` by concatenating all per-chromosome VCF files and discarding all information in the INFO field except AF. Annotating with this lightweight version of the gnomAD database takes less than 30 minutes per WGS sample.
+However, we only need to know AF of each gnomAD variant. So, we can make a single VCF file `gnomAD_light.vcf.gz` by concatenating all per-chromosome VCF files and discarding all information in the INFO field except AF. Annotating with this lightweight version of gnomAD takes less than 30 minutes per WGS sample.
 
-Watch out for the gnomAD reference genome: it should be the same as one used for Mutect2 calling, otherwise liftover on gnomAD variants is needed.
+Watch out for the gnomAD reference genome: it should be the same as the one used in Mutect2 calling, otherwise [liftover](https://genome.sph.umich.edu/wiki/LiftOver) on gnomAD variants is needed.
 
 3. Annotate for flanking regions
 
-This step makes sense only if gnomAD annotation was done. The idea is to include information about
-adjacent likely germline variants to take local variations of germline variant allele fraction (VAF) into account.
+This step makes sense only for gnomAD-annotated VCFs. At this step we include information about
+*likely germline* variants adjacent to each candidate variant. This should help take local variations of germline variant allele fraction (VAF) into account.
 
 The annotation command is as follows:
 
@@ -84,7 +81,7 @@ bgzip wgs_sample_name.flanking.vcf
 4. Remove all variants with gnomAD AF above the threshold.
 
 ```
-gnomAD_AF_thr=1e-4 #maximal gnomAD AF
+gnomAD_AF_thr=0 #maximal gnomAD AF
 
 bcftools view -i 'gnomAD_AF<'$gnomAD_AF_thr' || gnomAD_AF="."' wgs_sample_name.flanking.vcf.gz -Oz -o wgs_sample_name.filtered.vcf.gz
 ```
@@ -92,11 +89,11 @@ bcftools view -i 'gnomAD_AF<'$gnomAD_AF_thr' || gnomAD_AF="."' wgs_sample_name.f
 5. Add BAM information to the INFO field
 
 The `generate_tensors.py` function should be able to access raw reads corresponding
-to each of the called variants. So, each variant in the VCF file should be annotated with the
+to each called variant. So, each variant in the VCF file should be annotated with the
 name of the corresponding BAM file:
 
 ```
-bam_file_name=sample_XYZ.bam #BAM file corresponding to this VCF file, use only basename
+bam_file_name=sample_XYZ.bam #BAM file corresponding to this VCF file, don't include the full path
 
 bcftools view -h wgs_sample_name.filtered.vcf.gz \
 | sed -E '10i ##INFO=<ID=BAM,Number=.,Type=String,Description=\"BAM sample name\">' > wgs_sample_name.bam.vcf
@@ -108,7 +105,7 @@ bgzip wgs_sample_name.bam.vcf
 
 Use only the BAM basename, without the full path.
 
-As soon as the BAM name is added to the INFO field, VCF files from several samples can be concatenated. All concatenated VCF files must have the same sample name in the header. To change the sample name in the header, use the following commands:
+As soon as the BAM name is added to the INFO field, VCF files from several samples can be concatenated. For concatenation to be successfull, all concatenated VCF files must have the same sample name in the header. To change the sample name in the header, use the following commands:
 
 ```
 bcftools view wgs_sample_name.bam.vcf.gz | sed '/#CHROM/ s/FORMAT\t.*/FORMAT\tSAMPLE/' | bgzip -c > wgs_sample_name.unified_sample.vcf.gz
@@ -124,11 +121,9 @@ To concatenate several VCF files use the following command:
 bcftools concat -a wgs_sample_name_1.same_sample.vcf.gz wgs_sample_name_2.same_sample.vcf.gz -Oz -o inference.vcf.gz
 ```
 
-BAM files of all concatenated samples should be in a single folder.
+6. Generate imgb batches
 
-6. Generate imgb tensor batches
-
-Finally, the VCF file can be used to generate variant tensors. To speed up inference, we can group variant tensors in .imgb batches, each including 512 variants:
+Finally, the VCF file can be used to generate variant tensors:
 
 ```
 python generate_tensors.py \
@@ -136,7 +131,6 @@ python generate_tensors.py \
 --output_dir './inference/project_name/wgs_sample_name/tensors/' \
 --bam_dir './bam/project_name/' \
 --refgen_fa './ref/GRCh37.fa' \
---Lbatch 512 \
 --tensor_width 150 \
 --tensor_max_height 70
 ```
@@ -145,56 +139,52 @@ python generate_tensors.py \
 
 `refgen_fa` --- reference genome (genome used for variant calling with Mutect2) FASTA file
 
-`Lbatch` --- how many variants should be included in each imgb batch
-
 `--tensor_width` --- width of the variant tensor
 
 `--tensor_height` --- maximal height of the variant tensor. Variant tensors with more reads will be cropped.
 
-The VCF header is actually ignored by `generate_tensors.py`, so it does not need to be preserved
+The VCF header is actually ignored by `generate_tensors.py`, so it does not need to be preserved.
+
+To speed up I/O operations, `generate_tensors.py` combines variant tensors into large imgb batches, 5K variants each.
 
 7. When imgb batches are generated, descend to the `output_dir` and make a list of all batches:
 
 ```
 find ~+  -name '*.imgb' > wgs_sample_name_imgb.lst
 ```
-This list is to be passed to the NNC using the `--test_dataset` option.
+This list is to be passed to the CNN using the `--test_dataset` option.
 
-## Data preprocessing in test(evaluation) mode
-
-In test mode, we use variants with known labels (somatic/non-somatic) to evaluate the NNC performance.
-
-Somatic variants should be labelled with tag SOMATIC in the INFO field of the VCF file. Non-somatic variants
-do not need to be labelled. We labelled several random variants in file `example.unified_sample.vcf` as somatic to demonstrate how the tag SOMATIC should be added.
+## Test(evaluation) mode
 
 Data preparation in test mode includes all steps of data preparation in inference mode.
 
 However, test (and train) modes are only possible when a matched normal is available for a tumor sample, s.t.
-somatic variants can be identified.
+somatic variants can be identified. Somatic variants can be called, for example, by additionally running Mutect2 on a tumor-normal pair.
 
-To call somatic variants and label them in the VCF file, run Mutect2 again using a matched normal.
+Somatic variants should be labelled with tag SOMATIC in the INFO field of the VCF file. Non-somatic variants
+do not need to be labelled. We labelled several random variants in file `example.unified_sample.vcf` as somatic to demonstrate how the tag SOMATIC should be added.
 
-Note that WGS samples used for evaluation must not be used for training.
+Note that WGS samples used in evaluation must not be used in CNN training.
 
-## Data preprocessing in train mode.
+## Train mode
 
-For training the NNC one needs around 120 000 SNPs (50% somatic,50% non-somatic) and
-20 000 INDELs (50% somatic,50% non-somatic).
+For training the CNN one needs around 120 000 SNPs (50% somatic/50% non-somatic) and
+20 000 INDELs (50% somatic/50% non-somatic).
 
 These variants should be collected from several WGS
 samples, s.t. the full range of read depths, mutational signatures, etc. is represented.
 
-When the number of somatic variants is below the mentioned values, upsampling is required.
+When the number of somatic variants is below the mentioned values, upsampling should be done.
 
-So, to prepare train data, we need the following:
+So, to prepare train data, one needs the following:
 
-1. Choose several WGS samples for training. Follow all steps for test data preparation described in the previous section.
+1. Choose several WGS samples with known somatic variants (or call somatic variants by applying Mutect2 on tumor-normal pairs). Follow all steps for test data preparation described above.
 
 2. Combine per-sample VCF file into a single VCF file `train.vcf.gz` using the `bcftools concat -a` command. Note
-that for a successfull concatenation the VCF files should have the same sample name.
+that for a successfull concatenation the VCF files should have the same sample name in the header.
 
 3. Randomly choose the required number of somatic and non-somatic SNP and INDEL variants from `train.vcf.gz`.
-Upsample when necessary. See example commands in the script `make_train_set.sh`, which generates `train.selected.tsv` required
+Upsample when necessary. See example commands in `make_train_set.sh`, which generates `train.selected.tsv` required
 in the next step.
 
 4. Generate imgb tensor batches:
@@ -205,19 +195,16 @@ python generate_tensors.py \
 --output_dir './train/train_dataset_name/tensors/' \
 --bam_dir './bam/project_name/' \
 --refgen_fa './ref/GRCh37.fa' \
---Lbatch 32 \
 --tensor_width 150 \
 --tensor_max_height 70
 ```
 
-Note that `Lbatch=32` is important for correct model training, it is not recommended to change this value.
-
 When using a computational cluster, one can speed up data preparation by splitting `train_selected.vcf` into many
-small VCF files and running a number of parallel instances of `generate_tensors.py`.
+small files and running a number of parallel instances of `generate_tensors.py`.
 
 5. When imgb batches are generated, descend to the `output_dir` and make a list of all batches:
 
 ```
 find ~+  -name '*.imgb' > train_imgb.lst
 ```
-This list is to be passed to the NNC using the `--train_dataset` option.
+This list is to be passed to the CNN using the `--train_dataset` option.

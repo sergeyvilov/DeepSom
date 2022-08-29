@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import numpy as np
 import re
 import os
@@ -13,7 +10,6 @@ def is_valid_snp(ref, alt):
     -REF or ALT allele is not in A,C,T or G
     -REF or ALT allele is longer than 1
     '''
-    #alt = alts[0] if isinstance(alts,(tuple,np.ndarray)) else alts
 
     assert isinstance(ref,str), 'Ref allele is not a string'
     assert isinstance(alt,str), 'Alt allele is not a string'
@@ -37,10 +33,9 @@ def is_valid_indel(ref, alt):
     Check if an indel variant is correct
 
     invalid indel:
-    -REF or ALT allele is not in A,C,T or G
+    -REF or ALT allele has a base which differs from A,C,T or G
     -Both REF and ALT allele are of length 1
     '''
-    #alt = alts[0] if isinstance(alts,(tuple,np.ndarray)) else alts
 
     assert isinstance(ref,str), 'Ref allele is not a string'
     assert isinstance(alt,str), 'Alt allele is not a string'
@@ -56,15 +51,15 @@ def is_valid_indel(ref, alt):
 
     return 0
 
-def encode_bases(letters):
+def encode_bases(bases):
     '''
     Encode bases with digits
     '''
     nmap={'A':0,'C':1,'T':2,'G':3, 'N':4, 'K':5, '*':6, 'M':7} #asterix for deletion
-    if len(letters)>1:
-        return([nmap[n] for n in letters])
+    if len(bases)>1:
+        return([nmap[n] for n in bases])
     else:
-        return nmap[letters] #ACTGNK*M-->01234567
+        return nmap[bases] #ACTGNK*M-->01234567
 
 def decode_bases(numbers):
     '''
@@ -78,20 +73,11 @@ def decode_bases(numbers):
 
 def get_phred_qual(qual_symbol):
     '''
-    Convert an ASCII quality character to the probability that a base is called incorrectly
+    Convert an ASCII quality character to the probability that the base is called incorrectly
     '''
     probability = 10 ** ((ord(qual_symbol) - 33) / -10)
 
     return probability
-
-# def compute_VAF_DP(pileup_column, alt):
-#     '''
-#     Return VAF and DP for a pileup column
-#     '''
-#     DP = len(pileup_column)
-#     VAF = (pileup_column == encode_bases(alt)).sum()/DP
-#
-#     return VAF,DP
 
 def compute_VAF_DP(reads, variant, vartype, varlen, ins_at_variant):
         '''
@@ -107,30 +93,29 @@ def compute_VAF_DP(reads, variant, vartype, varlen, ins_at_variant):
             variant_column = [read_seq[(variant['pos']-1)-read_pos] for read_pos, read_seq, *_ in reads]
             is_alt = [decode_bases(alt)==variant['alt'] for alt in variant_column]
 
-        N_alts = sum(is_alt)
+        AD_alt = sum(is_alt)
         DP = len(variant_column)
 
-        return N_alts/DP, DP, is_alt #VAF, DP, is ALT in read
+        return AD_alt/DP, DP, is_alt #VAF, DP, is ALT in read
 
 
 def variant_to_tensor(variant, bam_file, ref_file,
-                            tensor_width = 150, # tensor width: 2x the most probable read length
-                            tensor_max_height = 70, #max tensor height, the probability to have a read depth above this value should be small
+                            tensor_width = 150, # tensor width
+                            tensor_max_height = 70, #max tensor height
                             tensor_sort_by_variant = False, #sort reads by value in the variant column
                             tensor_check_variant = 'vaf_only', # perform basic checks for snps/indels: 'snps', 'indels' or 'vaf_only'
-                            tensor_crop_strategy = 'topbottom', #crop strategy when read depth exceeds tensor_max_height
                             replacement_variant = None, #replace mutation signatures with this variant, only for SNPs
                             ):
 
     '''
-    Collect reads for a given variant and transform them to a variant tensor.
+    Collect reads for a given variant and transform them into a variant tensor.
 
     When reading the BAM file, consider only first MAX_RAW_READS reads.
     Discard reads with at least one flag from EXCLUDE_FLAGS.
 
     Use p-hot encoding for read bases and one-hot encoding for reference bases.
 
-    Crop tensors whose height is above tensor_max_height using tensor_crop_strategy.
+    Crop tensors whose height is above tensor_max_height, ensure VAF resolution of 1/tensor_max_height.
 
     Return tensor, reference sequence, VAF and DP before cropping.
 
@@ -159,7 +144,6 @@ def variant_to_tensor(variant, bam_file, ref_file,
         vartype='snp'
         varlen=1
 
-
     raw_reads = []
 
     #collect all the reads around the candidate variant position
@@ -170,12 +154,13 @@ def variant_to_tensor(variant, bam_file, ref_file,
             break
 
     #Align reads according to their CIGAR strings.
-    #For each read its cigar string is analysed to place
-    #read bases correctly (taking into account clips, insertions and deletions).
+    #For each read its CIGAR string is analysed to place
+    #read bases correctly, taking into account clips, insertions and deletions.
 
     aligned_reads = []
 
-    #we schall collect insertions at the variant site only if the variant is an insertion
+    #we shall collect insertions at the variant site only if the variant is an insertion
+
     ins_at_variant = [] #insertions at the variant site for all reads
     max_ins_length_at_variant = 0
 
@@ -250,7 +235,8 @@ def variant_to_tensor(variant, bam_file, ref_file,
     #if there are more reads than we can include in the tensor, we have to remove some of them
 
     if N_reads>tensor_max_height:
-        #choose tensor_max_height reads s.t. the VAF is preserved
+        #cropping
+        #select N=tensor_max_height reads s.t. the VAF is preserved
         is_alt = np.array(is_alt)
         alt_indices = np.where(is_alt)[0] #indices of alt bases in the variant column
         ref_indices = np.where(is_alt==False)[0] #indices of ref bases in the variant column
@@ -259,6 +245,7 @@ def variant_to_tensor(variant, bam_file, ref_file,
         chosen_indices = np.hstack((alt_indices_new, ref_indices_new))
         aligned_reads = [read for read_idx, read in enumerate(aligned_reads) if read_idx in chosen_indices] #choose only reads with given indices
 
+    #OLD cropping strategies: VAF isn't preserved
     #if tensor_crop_strategy == 'center':
     #    #keep reads at the top and at the bottom, remove in the center
     #    aligned_reads = aligned_reads[:tensor_max_height//2] + aligned_reads[max(N_reads_tot-tensor_max_height//2,0):N_reads]
@@ -363,7 +350,7 @@ def variant_to_tensor(variant, bam_file, ref_file,
 
     def replace_bases(replacement_variant, variant_old, reads_im_old, ref_bases_old):
         '''
-        Replaces sequences for a given variant, while keeping read qualities and flags of original reads
+        Replace mutational context for a given variant, while keeping read qualities and flags of original reads
         USE ONLY WITH SNPs
         '''
 
@@ -457,4 +444,4 @@ def variant_to_tensor(variant, bam_file, ref_file,
 
     ref_support = ''.join(decode_bases(ref_bases)[variant_column_idx-30:variant_column_idx+31]) # reference sequence around the variant
 
-    return tensor, ref_support, VAF0, DP0 #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
+    return tensor, ref_support, VAF0, DP0 #variant tensor, reference sequence around the variant, VAF and DP computed befor cropping the tensor

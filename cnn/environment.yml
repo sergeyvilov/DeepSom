@@ -1,4 +1,4 @@
-name: nnc
+name: DeepSom-cnn
 channels:
   - pytorch
   - anaconda

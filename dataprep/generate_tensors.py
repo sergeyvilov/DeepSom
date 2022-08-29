@@ -29,10 +29,9 @@ parser.add_argument("--vcf",                            help = "vcf or tsv file 
 parser.add_argument("--output_dir",                     help = "output dir name", type = str, required = True)
 parser.add_argument("--bam_dir",                        help = "folder with bam files", type = str, required = True)
 parser.add_argument("--refgen_fa",                      help = "reference genome FASTA file", type = str, required = True)
-parser.add_argument("--Lbatch",                         help = "size of tensor batches", type = int, default = 32, required = False)
+parser.add_argument("--Lbatch",                         help = "size of imgb batches", type = int, default = 5000, required = False)
 parser.add_argument("--tensor_width",                   help = "tensor width", type = int, default = 150, required = False)
 parser.add_argument("--tensor_max_height",              help = "max tensor height", type = int, default = 70, required = False)
-parser.add_argument("--tensor_crop_strategy",           help = "how to crop tensor when Nreads>tensor_max_height", type = str, default = 'topbottom', required = False)
 parser.add_argument("--tensor_sort_by_variant",         help = "sort reads by base in the variant column", type = lambda x: bool(str2bool(x)), default = True, required = False)
 parser.add_argument("--tensor_check_variant",           help = "perform basic checks for snps/indels", default = 'vaf_only', required = False) #'snps', 'indels', 'vaf_only' or 'None'
 parser.add_argument("--replacement_csv",                help = "csv file with field chrom, pos, ref, alt when SNP mutation signatures are to be permuted", type=str, default = None, required = False) #'snps', 'indels', 'vaf_only' or 'None'
@@ -52,7 +51,7 @@ tensor_opts = dict() #parameters for the variant_to_tensor function
 gen_params = dict() #parameters for the get_tensors function
 
 for param,value in input_params.items():
-    #from input parameters, separate parameters for get_tensors and variant_to_tensor functions
+    #separate parameters for get_tensors and variant_to_tensor functions
     if not param.startswith('tensor_'):
         gen_params[param] = value
     else:
