@@ -24,7 +24,7 @@ python nn.py \
 --model_weight './train/train_dataset_name/results/weights/epoch_N_weights_model' \
 --tensor_width 150 \
 --tensor_height 70 \
---max_depth 150 \
+--max_depth 200 \
 ```
 
 `--model_weight` --- path to the weights of a pretrained model.
@@ -39,6 +39,8 @@ often has a long right tail, we recommend using the 99th quantile of this distri
 Predictions on `test_dataset` are saved to `output_dir/predictions/final_predictions.vcf`, where the CNN score is stored under `cnn_score` record in the INFO field.
 
 `--tensor_width`, `--tensor_height` and `--max_depth` **should correspond to those used in train mode**.
+
+Please visit [test](../test/BLCA-US) for a practical example on how to run the CNN in inference mode.
 
 ## Test(evaluation) mode
 
@@ -59,7 +61,7 @@ python nn.py \
 --output_dir './train/train_dataset_name/results/' \
 --tensor_width 150 \
 --tensor_height 70 \
---max_depth 150 \
+--max_depth 200 \
 --val_fraction 0.0 \
 --save_each 10
 ```
@@ -86,7 +88,7 @@ Training for 120 000 SNP and 20 000 INDEL variants (`tensor_width`=150; `tensor_
 
 # Using the CNN output to compute probabilities and classify variants
 
-For any given variant, the CNN outputs a continuous score ![equation](https://latex.codecogs.com/svg.image?s)
+For any given variant, the CNN outputs a continuous pseudoprobability score ![equation](https://latex.codecogs.com/svg.image?s)
 between 0 and 1. The higher ![equation](https://latex.codecogs.com/svg.image?s)
 , the higher the probability ![equation](https://latex.codecogs.com/svg.image?p_%7Bsom%7D) that the variant is somatic. Variant classification is performed by imposing a threshold on ![equation](https://latex.codecogs.com/svg.image?s) s.t. all variants with ![equation](https://latex.codecogs.com/svg.image?s%3Es_%7Bthr%7D) are considered somatic. This threshold can be chosen based on
 the [ROC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic) or [Precision-Recall](https://en.wikipedia.org/wiki/Precision_and_recall) curve. The ROC curve is a plot of true positive rate (TPR) against false positive rate (FPR) w.r.t. somatic variants. The Precision-Recall curve is a plot of recall against precision w.r.t. somatic variants. For example, using the Precision-Recall curve, one can choose the threshold that maximizes the [f1-score](https://en.wikipedia.org/wiki/F-score) or guarantees a given level of recall.  Note that variants used for choosing ![equation](https://latex.codecogs.com/svg.image?s_%7Bthr%7D) should be different from those used for CNN training.

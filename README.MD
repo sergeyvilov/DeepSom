@@ -1,4 +1,6 @@
-# DeepSom. A CNN - based pipeline for calling somatic SNP and INDEL variants without a matched normal
+# DeepSom
+
+DeepSom is a convolutional neural network (CNN) - based pipeline for calling somatic SNP and INDEL variants without a matched normal.
 
 DeepSom can operate in three modes:
 
@@ -11,3 +13,5 @@ DeepSom can operate in three modes:
 See [dataprep](dataprep/) on how to prepare data for the CNN.
 
 See [cnn](cnn/) on how to run the CNN.
+
+See [test](test/BLCA-US) for a test run of DeepSom on a preprocessed set of variants.

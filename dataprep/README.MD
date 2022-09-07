@@ -113,13 +113,15 @@ bcftools view wgs_sample_name.bam.vcf.gz | sed '/#CHROM/ s/FORMAT\t.*/FORMAT\tSA
 tabix wgs_sample_name.unified_sample.vcf.gz
 ```
 
-See `example.unified_sample.vcf` to learn how a single-sample VCF file should look like after the previous steps.
+Alternatively, FORMAT and SAMPLE columns can simply be removed since they are ignore during tensor generation.
 
 To concatenate several VCF files use the following command:
 
 ```
 bcftools concat -a wgs_sample_name_1.same_sample.vcf.gz wgs_sample_name_2.same_sample.vcf.gz -Oz -o inference.vcf.gz
 ```
+
+See [BLCA-US_example_20220901.vcf](../test/BLCA-US/BLCA-US_example_20220901.vcf) to learn how the final VCF file should look like  (FORMAT and SAMPLE columns are removed).
 
 6. Generate imgb batches
 
@@ -162,7 +164,7 @@ However, test (and train) modes are only possible when a matched normal is avail
 somatic variants can be identified. Somatic variants can be called, for example, by additionally running Mutect2 on a tumor-normal pair.
 
 Somatic variants should be labelled with tag SOMATIC in the INFO field of the VCF file. Non-somatic variants
-do not need to be labelled. We labelled several random variants in file `example.unified_sample.vcf` as somatic to demonstrate how the tag SOMATIC should be added.
+do not need to be labelled. See [BLCA-US_example_20220901.vcf](../test/BLCA-US/BLCA-US_example_20220901.vcf) to learn how the tag SOMATIC should be added.
 
 Note that WGS samples used in evaluation must not be used in CNN training.
 
