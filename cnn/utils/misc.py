@@ -123,7 +123,7 @@ def save_predictions(predictions, output_dir, output_name):
             variant_info = variant_meta['info'] + ';'
         else:
             variant_info = ''
-        for key in ['vcf', 'DP0', 'VAF0', 'refseq', 'batch_name', 'imgb_index']:
+        for key in ['vcf', 'DP0', 'VAF0', 'batch_name', 'imgb_index']:
             #all supplementary information from variant_meta goes to the INFO field
             if key in variant_meta.keys():
                 variant_info += f"{key}={variant_meta[key]};"
@@ -154,15 +154,13 @@ def save_predictions(predictions, output_dir, output_name):
             f.write('##fileformat=VCFv4.2\n')
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
             f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name">\n')
-            #f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name">\n')
-            #f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name">\n')
             f.write('##INFO=<ID=flanking,Number=.,Type=String,Description="Ref and alt AD of left and right flanking variants">\n')
             f.write('##INFO=<ID=GERMLINE,Number=.,Type=Flag,Description="Germline variant">\n')
             f.write('##INFO=<ID=SOMATIC,Number=.,Type=Flag,Description="Somatic variant">\n')
             f.write('##INFO=<ID=DP0,Number=1,Type=Integer,Description="DP based on BAM">\n')
             f.write('##INFO=<ID=VAF0,Number=1,Type=Float,Description="VAF based on BAM">\n')
             f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="gnomAD population allele frequency">\n')
-            f.write('##INFO=<ID=refseq,Number=.,Type=String,Description="Reference sequence around the variant">\n')
+            #f.write('##INFO=<ID=refseq,Number=.,Type=String,Description="Reference sequence around the variant">\n')
             f.write('##INFO=<ID=batch_name,Number=.,Type=String,Description="Name of the imgb batch containing the variant">\n')
             f.write('##INFO=<ID=imgb_index,Number=1,Type=Integer,Description="Index of the variant in the imgb batch">\n')
             f.write('##INFO=<ID=cnn_score,Number=1,Type=Float,Description="CNN classification score">\n')

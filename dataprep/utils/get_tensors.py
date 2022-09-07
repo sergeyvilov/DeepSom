@@ -27,7 +27,6 @@ def get_tensors(vcf :str,                             #full path to a VCF/TSV fi
                tensor_opts :Dict,                     #options for variant tensor encoding
                Lbatch :Optional[int] = 1,             #how many tensors to put in each batch
                simulate :Optional[bool] = False,      #simulate workflow, don't save tensors
-               replacement_csv :Optional[str] = None, #replace mutational signatures by randomly choosing those from this file
              ):
     '''
     Construct imgb batches based on variants in the input vcf (tsv) file.
@@ -83,9 +82,6 @@ def get_tensors(vcf :str,                             #full path to a VCF/TSV fi
 
     vcf_in = vcf_in.sample(frac=1., random_state=hash(vcf)%2**32) #shuffle input vcf
 
-    if replacement_csv:
-        replacement_df = pd.read_csv(replacement_csv, names=['chrom', 'refpos', 'ref', 'alt'], dtype={'chrom':str, 'refpos':int})
-
     ref_file = pysam.FastaFile(refgen_fa) #open reference genome FASTA
 
     for block_start in range(0, len(vcf_in), BLOCK_LENGTH):
@@ -114,33 +110,10 @@ def get_tensors(vcf :str,                             #full path to a VCF/TSV fi
                 variant_info = {'pos':rec.pos, 'refpos':rec.pos, 'chrom':rec.chrom, 'ref':rec.ref, 'alt':rec.alt,
                     'info': rec['info'].rstrip(';'), 'vcf': vcf_basename, 'record_idx':record_idx}
 
-                if 'POS_Build36' in rec['info']: #for some samples in TCGA-LAML
-                    variant_info['pos'] = int(re.search('POS_Build36=([^;]*)',rec['info']).groups(1)[0])
-
-                if replacement_csv:
-                    #replace mutational context
-                    chrom, refpos, ref, alt = replacement_df.sample(n=1).values[0]
-                    replacement_variant = {'chrom':chrom, 'refpos':refpos, 'ref':ref, 'alt':alt}
-
-                else:
-
-                    replacement_variant = None
-
-                #
-                # variant_annotations = {}
-                #
-                # for ann_name in ['GERMLINE']:
-                #     if ann_name in rec.info.keys():
-                #         variant_annotations[ann_name] = rec.info.get(ann_name)
-                #     else:
-                #         variant_annotations[ann_name] = None
-                #
-                # variant_info.update(variant_annotations)
-
                 try:
 
                     #get a tensor for the current variant
-                    variant_tensor, ref_support, VAF0, DP0 = variant_to_tensor(variant_info, bam_file, ref_file, replacement_variant=replacement_variant,
+                    variant_tensor, ref_support, VAF0, DP0 = variant_to_tensor(variant_info, bam_file, ref_file,
                          **tensor_opts) #variant tensor, reference sequence around the variant, VAF and DP computed on non-truncated tensor
 
                     tensor_height = variant_tensor['p_hot_reads'].shape[0] #tensor height after cropping (can be smaller than DP)
@@ -159,9 +132,6 @@ def get_tensors(vcf :str,                             #full path to a VCF/TSV fi
                    variant_info['remarks'] = error_msg
 
                    variant_tensor = None
-
-                for key in ('chrom', 'refpos', 'ref', 'alt'):
-                    variant_info['replaced_' + key] = replacement_variant[key] if replacement_variant else None
 
                 block_variants.append((variant_tensor, variant_info))
 
