@@ -224,19 +224,19 @@ if train_on:
 
     train_dataset = TensorDataset(train_images, max_tensors = input_params.max_train_tensors)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=1, collate_fn=collate_fn)
+    train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 if valid_on:
 
     valid_dataset = TensorDataset(valid_images, max_tensors = input_params.max_valid_tensors)
 
-    valid_dataloader = DataLoader(valid_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=512, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 if test_on:
 
     test_dataset = TensorDataset(test_images, max_tensors = input_params.max_test_tensors)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
 #access the GPU
 if torch.cuda.is_available():
