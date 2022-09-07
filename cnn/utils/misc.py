@@ -30,42 +30,40 @@ def print(*args, **kwargs):
     builtins.print(now, *args, **kwargs)
     sys.stdout.flush()
 
-def extract_flanking_info(info):
-    '''
-    Extract information about flanking regions from an INFO string
-    '''
-    info = re.search('flanking=([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)\|([0-9\.\-]*)',info)
-
-    if info==None:
-        return (-1,-1,-1,-1) #negative value when data is missing
-
-    return info.groups()
-
-def normalize_dp(dp, max_depth):
-    '''
-    Normalize read depth
-    '''
-    if dp>0:
-        return min(dp/max_depth,1)
-    else:
-        #negative value when the data is missing
-        return max(dp,-1)
 
 def get_misc_tensor_data(variant_meta, max_depth):
     '''
-    Extract information about flanking regions for a variant
+    Extract information about flanking regions from an INFO string
     '''
-    info = (variant_meta['VAF0'],variant_meta['DP0'],*extract_flanking_info(variant_meta['info']))
 
-    vaf,dp,lvaf,ldp,rvaf,rdp = list(map(float,info))
+    VAF0, DP0 = float(variant_meta['VAF0']), float(variant_meta['DP0'])
 
-    if max_depth < 0:
-        info = [vaf, normalize_dp(dp, abs(max_depth)), -1, -1, -1, -1]
-        #info = [-1, -1, -1, -1, -1, -1]
+    DP0 = min(DP0 / max_depth, 1)
+
+    flanking = re.search('flanking=([0-9|-]+)',variant_meta['info'])
+
+    if max_depth>0 and flanking!=None:
+
+        flanking = np.array([float(x) for x in flanking[1].split('|')])
+
+        AD_alt = flanking[1::2] #odd position - alternative allele depth
+        AD_ref = flanking[::2] #even position - reference allele depth
+
+        DP = AD_ref + AD_alt
+
+        VAF = AD_alt / DP
+
+        mask = (AD_ref>=0)&(AD_alt>=0)
+
+        DP = np.where(mask, np.clip(DP / max_depth, 0, 1), -1)
+
+        VAF = np.where(mask, VAF, -1) #-1 when AD_ref=AD_alt=-1
+
+        return np.hstack((DP0, DP, VAF0, VAF)).tolist()
+
     else:
-        info = [vaf, normalize_dp(dp, max_depth), lvaf, normalize_dp(ldp, 2*max_depth), rvaf, normalize_dp(rdp, 2*max_depth)]
 
-    return info
+        return [DP0, -1,-1,-1,-1, VAF0, -1,-1,-1,-1]
 
 def get_ROC(predictions):
 
@@ -156,10 +154,11 @@ def save_predictions(predictions, output_dir, output_name):
             f.write('##fileformat=VCFv4.2\n')
             f.write('##INFO=<ID=vcf,Number=.,Type=String,Description="Name of the vcf file from which the variant comes">\n')
             f.write('##INFO=<ID=BAM,Number=.,Type=String,Description="BAM file name">\n')
-            f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name">\n')
-            f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name">\n')
-            f.write('##INFO=<ID=GERMLINE,Number=1,Type=Integer,Description="Germline variant">\n')
-            f.write('##INFO=<ID=SOMATIC,Number=1,Type=Integer,Description="Somatic variant">\n')
+            #f.write('##INFO=<ID=Sample,Number=.,Type=String,Description="Sample name">\n')
+            #f.write('##INFO=<ID=Project,Number=.,Type=String,Description="Project name">\n')
+            f.write('##INFO=<ID=flanking,Number=.,Type=String,Description="Ref and alt AD of left and right flanking variants">\n')
+            f.write('##INFO=<ID=GERMLINE,Number=.,Type=Flag,Description="Germline variant">\n')
+            f.write('##INFO=<ID=SOMATIC,Number=.,Type=Flag,Description="Somatic variant">\n')
             f.write('##INFO=<ID=DP0,Number=1,Type=Integer,Description="DP based on BAM">\n')
             f.write('##INFO=<ID=VAF0,Number=1,Type=Float,Description="VAF based on BAM">\n')
             f.write('##INFO=<ID=gnomAD_AF,Number=1,Type=Float,Description="gnomAD population allele frequency">\n')

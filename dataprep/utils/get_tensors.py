@@ -8,7 +8,7 @@ import warnings
 
 import pandas as pd
 
-from variant_to_tensor import variant_to_tensor #function to generate a variant tensor
+from utils.variant_to_tensor import variant_to_tensor #function to generate a variant tensor
 
 def dump_batch(batch_tensors, batch_info, output_dir, batch_name, simulate=False):
     '''

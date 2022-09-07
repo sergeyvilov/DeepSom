@@ -3,7 +3,7 @@ import torch
 
 class ConvNN(nn.Module):
 
-    def __init__(self, dropout=0., misc_data_len=6, target_width=150, target_height=70, kernel_size=3, n_channels=[32, 32, 32, 32, 256, 256, 128]):
+    def __init__(self, dropout=0., misc_data_len=10, target_width=150, target_height=70, kernel_size=3, n_channels=[32, 32, 32, 32, 256, 256, 128]):
 
         super().__init__()
 

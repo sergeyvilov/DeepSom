@@ -16,13 +16,11 @@ from itertools import chain
 import torch
 from torch.utils.data import IterableDataset, DataLoader
 
-sys.path.append('utils')
+import utils.models as models              #model architecture
+import utils.train_eval as train_eval          #CNN train and evaluation
+import utils.misc as misc                #miscellaneous functions
 
-import models               #model architecture
-import train_eval           #CNN train and evaluation
-import misc                 #miscellaneous functions
-
-from misc import print      #print function that displays time
+from utils.misc import print      #print function that displays time
 
 def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
@@ -31,13 +29,16 @@ parser = argparse.ArgumentParser("nn.py")
 
 parser.add_argument("--train_dataset",                                help = "list of imgb batches used for training", type = str, default = None, required = False)
 parser.add_argument("--test_dataset",                                 help = "list of imgb batches for evaluation/inference", type = str, default = None, required = False)
-parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = 'predictions/', required = False)
+parser.add_argument("--output_dir",                                   help = "dir to save predictions and model/optimizer weights", type = str, default = '', required = False)
 parser.add_argument("--model_weight",                                 help = "initialization weight of the model", type = str, default = None, required = False)
 parser.add_argument("--optimizer_weight",                             help = "initialization weight of the optimizer, use only to resume training", type = str, default = None, required = False)
 parser.add_argument("--seed",                                         help = "seed for neural network training", type = int, default = 0, required = False)
 parser.add_argument("--tensor_width",                                 help = "tensor width", type = int, required = True)
 parser.add_argument("--tensor_height",                                help = "tensor height, all variants with larger read depth will be cropped", type = int, required = True)
-parser.add_argument("--max_depth",                                    help = "99th quantile of read depth  distribution", type = float, default = 150., required = False)
+parser.add_argument("--max_depth",                                    help = "99th quantile of read depth  distribution", type = float, default = 200., required = False)
+parser.add_argument("--max_train_tensors",                            help = "Maximal number of train tensors", type = int, default = None, required = False)
+parser.add_argument("--max_valid_tensors",                            help = "Maximal number of validation tensors", type = int, default = None, required = False)
+parser.add_argument("--max_test_tensors",                             help = "Maximal number of test tensors", type = int, default = None, required = False)
 parser.add_argument("--val_fraction",                                 help = "fraction of train imgb batches to use for validation", type = float, default = 0, required = False)
 parser.add_argument("--batch_size",                                   help = "batch size in training", type = int, default = 32, required = False)
 parser.add_argument("--learning_rate",                                help = "learning rate for optimizer", type = float, default = 1e-3, required = False)
@@ -59,6 +60,7 @@ for param_name in ['output_dir', '\\',
 'train_dataset', 'test_dataset', '\\',
 'tensor_width', 'tensor_height', '\\',
 'max_depth', '\\',
+'max_train_tensors', 'max_valid_tensors', 'max_test_tensors', '\\',
 'val_fraction', '\\',
 'tot_epochs', 'save_each', '\\',
 'model_weight', 'optimizer_weight', '\\',
@@ -88,9 +90,9 @@ if input_params.train_dataset:
 
     valid_images, train_images = train_valid_images[:N_valid], train_valid_images[N_valid:]
 
-    print(f'Train imgb batches {len(train_images)}')
+    print(f'Train imgb batches provided: {len(train_images)}')
 
-    print(f'Validation imgb batches: {len(valid_images)}')
+    print(f'Validation imgb batches provided: {len(valid_images)}')
 
     train_on, valid_on = len(train_images)>0, len(valid_images)>0
 
@@ -98,7 +100,7 @@ if input_params.test_dataset:
 
     test_images = pd.read_csv(input_params.test_dataset, header=None).squeeze(1).tolist() #full path to imgb batches
 
-    print(f'Test/Inference imgb batches: {len(test_images)}')
+    print(f'Test/Inference imgb batches provided: {len(test_images)}')
 
     test_on = len(test_images)>0
 
@@ -114,15 +116,16 @@ class TensorDataset(IterableDataset):
 
     def __init__(self,
                  imgb_list,      #full path to imgb batches
-                 target_height,  #target tensor height for the CNN
-                 target_width,   #target tensor width for the CNN
-                 max_depth,      #constant read depth normalization
+                 max_tensors,    #maximal number of tensors
                 ):
 
         self.imgb_list = imgb_list
-        self.target_height = target_height
-        self.target_width = target_width
-        self.max_depth = max_depth
+        self.target_height = input_params.tensor_height #target tensor height for the CNN
+        self.target_width = input_params.tensor_width   #target tensor width for the CNN
+        self.max_depth = input_params.max_depth         #read depth normalization constant
+
+        self.max_tensors = max_tensors                  #maximal number of tensors
+        self.tensor_counter = 0                         #number of tensors already processed
 
     def process_data(self, imgb_path):
         '''
@@ -130,6 +133,8 @@ class TensorDataset(IterableDataset):
         '''
         with open(imgb_path, 'rb') as imgb_header:
             while True:
+                if self.max_tensors!=None and self.tensor_counter >= self.max_tensors:
+                    break
                 try:
                     yield self.get_tensor(imgb_header)
                 except EOFError: #pickle file ends
@@ -154,8 +159,10 @@ class TensorDataset(IterableDataset):
         tensor, variant_meta = pickle.load(imgb_header) #retrieve tensor and meta information
 
         one_hot_ref = tensor['one_hot_ref']
-        p_hot_reads = tensor['p_hot_reads']*p_hot_correction_factor
+        p_hot_reads = tensor['p_hot_reads']
         flags_reads = tensor['flags_reads']
+
+        p_hot_reads = p_hot_reads*p_hot_correction_factor
 
         tensor_height, tensor_width, _ = p_hot_reads.shape #current size
 
@@ -198,6 +205,8 @@ class TensorDataset(IterableDataset):
 
         flanking_data = misc.get_misc_tensor_data(variant_meta, self.max_depth) #extract information added explicitly to fully connected layers (flanking regions)
 
+        self.tensor_counter += 1
+
         return full_tensor, label, flanking_data, variant_meta
 
     def __iter__(self):
@@ -213,19 +222,19 @@ def collate_fn(data):
 
 if train_on:
 
-    train_dataset = TensorDataset(train_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
+    train_dataset = TensorDataset(train_images, max_tensors = input_params.max_train_tensors)
 
     train_dataloader = DataLoader(train_dataset, batch_size=input_params.batch_size, shuffle=False, num_workers=1, collate_fn=collate_fn)
 
 if valid_on:
 
-    valid_dataset = TensorDataset(valid_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
+    valid_dataset = TensorDataset(valid_images, max_tensors = input_params.max_valid_tensors)
 
     valid_dataloader = DataLoader(valid_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
 
 if test_on:
 
-    test_dataset = TensorDataset(test_images, target_height=input_params.tensor_height, target_width=input_params.tensor_width, max_depth=input_params.max_depth)
+    test_dataset = TensorDataset(test_images, max_tensors = input_params.max_test_tensors)
 
     test_dataloader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=1, collate_fn=collate_fn)
 

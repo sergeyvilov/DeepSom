@@ -105,6 +105,7 @@ def variant_to_tensor(variant, bam_file, ref_file,
                             tensor_sort_by_variant = False, #sort reads by value in the variant column
                             tensor_check_variant = 'vaf_only', # perform basic checks for snps/indels: 'snps', 'indels' or 'vaf_only'
                             replacement_variant = None, #replace mutation signatures with this variant, only for SNPs
+                            tensor_sigma_noise = 0, #random noise on the quality score to hinder patient identification
                             ):
 
     '''
@@ -181,6 +182,11 @@ def variant_to_tensor(variant, bam_file, ref_file,
         seq = encode_bases(seq) #letters to digits
 
         qual = np.array([get_phred_qual(q) for q in qual])     #probability that the base is called INCORRECTLY
+
+        if tensor_sigma_noise > 0:
+            #add random noise to quality scores to hinder identification of the patient
+            qual = np.clip(qual + np.random.randn(len(qual))*tensor_sigma_noise,0,1.)
+
         qual = 1.-qual                                         #probability that the base is called CORRECTLY
 
         c = 0 #current position in the original (not aligned) read

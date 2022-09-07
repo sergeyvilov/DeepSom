@@ -1,5 +1,5 @@
 ################################################################################################################
-# Get VAF and DP of flanking variants for each variant in a VCF file
+# Get reference and alt allelic depths of flanking variants for each variant in a VCF file
 #
 #
 # python get_flanking.py vcf_name min_gnomAD_AF flanking_region_length
@@ -18,6 +18,7 @@ import os
 import sys
 
 MIN_AD = 5 #minimal AD for a flanking variant
+N_FLANKING_EACH_SIDE = 2 #number of flanking variants to consider at each side
 
 def get_flanking(variants_pos, germline_df):
     '''
@@ -27,11 +28,11 @@ def get_flanking(variants_pos, germline_df):
     germline_df: (likely germline) variants, that can be flanking variants for positions in variants_pos
     '''
 
-    germline_df.sort_values(by='pos', inplace=True)
+    germline_df = germline_df.sort_values(by='pos')
 
     L = len(germline_df)
 
-    AD = germline_df[['AD_ref','AD_alt']].values
+    AD = germline_df[['AD_ref','AD_alt']].values.astype(int)
 
     for variant_pos in variants_pos:
 
@@ -39,24 +40,22 @@ def get_flanking(variants_pos, germline_df):
         max_right_idx = np.searchsorted(germline_df.pos, variant_pos+flanking_region_length)
         variant_idx = np.searchsorted(germline_df.pos, variant_pos)
 
-        AD_ref, AD_alt = AD[max(variant_idx-2,min_left_idx,0):variant_idx].sum(0) #combine ref and alt AD of at most 2 flanking variants to the left
-        DP = AD_ref + AD_alt
-        if DP>0:
-            flanking_lVAF, flanking_lDP = AD_alt / DP, DP
-        else:
-            flanking_lVAF, flanking_lDP = -1, -1
+        flanking_list = [-1 for _ in range(N_FLANKING_EACH_SIDE*2*2)]
+
+        flanking_left = AD[max(variant_idx-N_FLANKING_EACH_SIDE,min_left_idx,0):variant_idx][::-1]
+
+        for idx, (AD_ref, AD_alt) in enumerate(flanking_left):
+            flanking_list[idx*2:idx*2+2] = AD_ref, AD_alt
 
         if variant_idx<L and germline_df.iloc[variant_idx].pos==variant_pos: #avoid overlap between candodate variant and its flanking variant
             variant_idx+=1
 
-        AD_ref, AD_alt = AD[variant_idx:min(variant_idx+2,max_right_idx)].sum(0)  #combine ref and alt AD of at most 2 flanking variants to the right
-        DP = AD_ref + AD_alt
-        if DP>0:
-            flanking_rVAF, flanking_rDP = AD_alt / DP, DP
-        else:
-            flanking_rVAF, flanking_rDP = -1, -1
+        flanking_right = AD[variant_idx:min(variant_idx+N_FLANKING_EACH_SIDE,max_right_idx)]
 
-        print(f'{round(flanking_lVAF,3)}|{flanking_lDP}|{round(flanking_rVAF,3)}|{flanking_rDP}')
+        for idx, (AD_ref, AD_alt) in enumerate(flanking_right):
+            flanking_list[idx*2+N_FLANKING_EACH_SIDE*2:idx*2+N_FLANKING_EACH_SIDE*2+2] = AD_ref, AD_alt
+
+        print('|'.join([str(x) for x in flanking_list]))
 
 min_gnomAD_AF = float(sys.argv[2])
 
