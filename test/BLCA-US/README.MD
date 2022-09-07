@@ -11,4 +11,4 @@ conda activate DeepSom-cnn
 python ../../cnn/nn.py --tensor_width=150 --tensor_height=70 --test_dataset=test_imgb.lst --model_weight=../../cnn/models/gnomAD_thr_0/BLCA-US_gnomAD_thr_0_epoch_20_weights_model
 ```
 
-The final predictions will be saved in `./predictions/final_predictions.vcf`.
+The final predictions can then be found in `./predictions/final_predictions.vcf`.
