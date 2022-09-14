@@ -53,8 +53,11 @@ input_params = vars(parser.parse_args())
 
 input_params = misc.dotdict(input_params)
 
-assert input_params.tensor_width>24, 'Minimal tensor width is 24'
-assert input_params.tensor_height>10, 'Minimal tensor height is 10'
+if input_params.tensor_width<24:
+    raise ValueError('Minimal tensor width is 24')
+
+if input_params.tensor_height<10:
+    raise ValueError('Minimal tensor height is 10')
 
 for param_name in ['output_dir', '\\',
 'train_dataset', 'test_dataset', '\\',

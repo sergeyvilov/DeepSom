@@ -38,7 +38,7 @@ def get_misc_tensor_data(variant_meta, max_depth):
 
     VAF0, DP0 = float(variant_meta['VAF0']), float(variant_meta['DP0'])
 
-    DP0 = min(DP0 / max_depth, 1)
+    DP0 = min(abs(DP0 / max_depth), 1)
 
     flanking = re.search('flanking=([0-9|-]+)',variant_meta['info'])
 
